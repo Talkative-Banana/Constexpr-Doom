@@ -156,8 +156,19 @@ consteval Function ParseFunction(std::string_view func) {
 
       auto tok = func.substr(p, e - p);
 
-      if (!tok.empty() && tok[0] != '$')
-        f.m_params[f.m_paramCount++] = tok;
+      if (!tok.empty() && tok[0] != '$') {
+        if (tok == "i32") {
+          f.m_params[f.m_paramCount++] = ParamType::_i32;
+        } else if (tok == "i64") {
+          f.m_params[f.m_paramCount++] = ParamType::_i64;
+        } else if (tok == "f32") {
+          f.m_params[f.m_paramCount++] = ParamType::_f32;
+        } else if (tok == "f64") {
+          f.m_params[f.m_paramCount++] = ParamType::_f64;
+        } else {
+          throw "Invalid param type";
+        }
+      }
 
       p = e + 1;
     }
@@ -189,8 +200,19 @@ consteval Function ParseFunction(std::string_view func) {
 
       auto tok = func.substr(p, e - p);
 
-      if (!tok.empty() && tok[0] != '$')
-        f.m_locals[f.m_localCount++] = tok;
+      if (!tok.empty() && tok[0] != '$') {
+        if (tok == "i32") {
+          f.m_locals[f.m_localCount++] = ParamType::_i32;
+        } else if (tok == "i64") {
+          f.m_locals[f.m_localCount++] = ParamType::_i64;
+        } else if (tok == "f32") {
+          f.m_locals[f.m_localCount++] = ParamType::_f32;
+        } else if (tok == "f64") {
+          f.m_locals[f.m_localCount++] = ParamType::_f64;
+        } else {
+          throw "Invalid local type";
+        }
+      }
 
       p = e + 1;
     }
@@ -253,6 +275,15 @@ consteval Function ParseFunction(std::string_view func) {
   return f;
 }
 
+constexpr std::size_t constexpr_hash(std::string_view str) {
+  std::size_t hash = 14695981039346656037ull; // FNV offset basis
+  for (char c : str) {
+    hash ^= static_cast<std::size_t>(c);
+    hash *= 1099511628211ull; // FNV prime
+  }
+  return hash;
+}
+
 // ----- MODULE BUILDER -----
 inline consteval uint32_t SetupModule(std::string_view child, State &state) {
   WASMOP type = Identify(child);
@@ -262,7 +293,8 @@ inline consteval uint32_t SetupModule(std::string_view child, State &state) {
     if (f.m_typeIndex >= MAXFUNCTIONS) {
       throw "Function index out of table range";
     }
-    // state.m_functionTable.m_data[f.m_typeIndex] = f;
+    std::size_t hash = constexpr_hash(f.m_name);
+    state.m_functionTable.m_data[hash % MAXFUNCTIONS] = f;
   } else if (type == WASMOP::_type) {
   } else if (type == WASMOP::_table) {
   } else if (type == WASMOP::_memory) {
@@ -274,7 +306,151 @@ inline consteval uint32_t SetupModule(std::string_view child, State &state) {
   return 0;
 }
 
-inline consteval State SetupState() {
+constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
+  Stack &stk = state.m_stack;
+  Instr iPtr = Instr{OP::_i64, Member::_none, OperandType::_immediate, "0",
+                     state.m_instrPointer};
+  // Push return address to recover it after function call
+  stk.Push(iPtr);
+  Instr bPtr = Instr{OP::_i64, Member::_none, OperandType::_immediate, "0",
+                     stk.m_basePointer};
+  // Push the base ptr to recover it after function call
+  stk.Push(bPtr);
+
+  // Update the base pointer to the current stack pointer for the callee
+  stk.m_basePointer = stk.m_stackPointer;
+
+  // Push the function arguments
+  // get hash of the function name and use it to get the function type and
+  // argument count
+  size_t hash = constexpr_hash(funcName);
+  Function &f = state.m_functionTable.m_data[hash % MAXFUNCTIONS];
+  uint32_t argCount = f.m_paramCount;
+  uint32_t localCount = f.m_localCount;
+
+  // TODO: Get the actual argument value from the function arguments instead of
+  // pushing 0
+  for (int i = 0; i < argCount; i++) {
+    ParamType &param = f.m_params[i];
+    if (param == ParamType::_i32) {
+      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_immediate, "0"});
+    } else if (param == ParamType::_i64) {
+      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_immediate, "0"});
+    } else if (param == ParamType::_f32) {
+      stk.Push(Instr{OP::_f32, Member::_none, OperandType::_immediate, "0"});
+    } else if (param == ParamType::_f64) {
+      stk.Push(Instr{OP::_f64, Member::_none, OperandType::_immediate, "0"});
+    } else if (param == ParamType::_funcref) {
+      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_address, "0"});
+    } else if (param == ParamType::_externref) {
+      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_address, "0"});
+    } else {
+      throw "Unsupported parameter type";
+    }
+  }
+  // Push local variables
+  for (int i = 0; i < localCount; i++) {
+    ParamType &local = f.m_locals[i];
+    if (local == ParamType::_i32) {
+      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_immediate, "0"});
+    } else if (local == ParamType::_i64) {
+      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_immediate, "0"});
+    } else if (local == ParamType::_f32) {
+      stk.Push(Instr{OP::_f32, Member::_none, OperandType::_immediate, "0"});
+    } else if (local == ParamType::_f64) {
+      stk.Push(Instr{OP::_f64, Member::_none, OperandType::_immediate, "0"});
+    } else if (local == ParamType::_funcref) {
+      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_address, "0"});
+    } else if (local == ParamType::_externref) {
+      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_address, "0"});
+    } else {
+      throw "Unsupported local variable type";
+    }
+  }
+
+  // Update the active Function and instrunction Pointer
+  state.m_activeFunction = &f;
+  state.m_instrPointer = 0;
+  return STATUS::OK;
+}
+
+consteval STATUS HandleLocal(State &state, const Instr &instr) {
+  Stack &stk = state.m_stack;
+  uint64_t address = stk.m_basePointer - instr.m_operandValue - 1;
+  if (address < 0) {
+    throw "Invalid Address used in local.get";
+  }
+  if (instr.m_mem == Member::_get) {
+    Instr instr = Instr{OP::_i64, Member::_none, OperandType::_immediate, "0",
+                        stk.m_data[address].m_operandValue};
+    stk.Push(instr);
+  } else {
+    Instr instr = stk.Pop();
+    stk.m_data[address] = instr;
+  }
+  return STATUS::OK;
+}
+
+consteval STATUS HandleGlobal(State &state, const Instr &instr) {
+  
+  return STATUS::OK;
+}
+
+consteval STATUS run(State &state) {
+
+  // Get the main!
+  size_t hash = constexpr_hash("$main");
+  Function &f = state.m_functionTable.m_data[hash % MAXFUNCTIONS];
+  uint32_t instrCount = f.m_bodyCount;
+  state.m_activeFunction = &f;
+
+  while(1) {
+    Instr _op = state.m_activeFunction->m_body[state.m_instrPointer];
+    switch (_op.m_op) {
+    case OP::_nop: {
+      continue;
+    }
+    case OP::_drop: {
+    }
+    case OP::_local: {
+      STATUS res = HandleLocal(state, _op);
+      if (res == STATUS::ERROR) {
+        throw "LOCAL Call Handling Failed!";
+        return STATUS::ERROR;
+      }
+      break;
+    }
+    case OP::_global: {
+      STATUS res = HandleGlobal(state, _op);
+      if (res == STATUS::ERROR) {
+        throw "LOCAL Call Handling Failed!";
+        return STATUS::ERROR;
+      }
+      break;
+    }
+    case OP::_select: {
+      // using type = SELECT<True, float, int>::type;
+      // return std::is_same_v<type, int>;
+      break;
+    }
+    case OP::_call: {
+      STATUS res = HandleCall(state, _op.m_operand);
+      if (res == STATUS::ERROR) {
+        throw "CALL Call Handling Failed!";
+        return STATUS::ERROR;
+      }
+      break;
+    }
+    case OP::_unreachable: {
+      throw "CPU Halt!";
+      return STATUS::ERROR;
+    }
+    }
+  }
+  return STATUS::OK;
+}
+
+inline consteval STATUS Run() {
   State state{};
   auto res = ParseProgram(program);
   int m_count = res.first;
@@ -286,7 +462,6 @@ inline consteval State SetupState() {
     throw "Too many modules found";
 
   // max MAXCHILDREN module children and MAXMODULES modules
-
   // Validate Modules
   std::array<std::array<Span, MAXCHILDREN>, MAXMODULES> items{};
   std::array<int, MAXMODULES> itemCount{};
@@ -304,8 +479,8 @@ inline consteval State SetupState() {
   // Setup Modules
   for (int moduleIdx = 0; moduleIdx < m_count; moduleIdx++) {
     auto span = res.second[moduleIdx];
-    std::string_view module = program.substr(span.begin, span.end -
-    span.begin); for (int item = 0; item < itemCount[moduleIdx]; item++) {
+    std::string_view module = program.substr(span.begin, span.end - span.begin);
+    for (int item = 0; item < itemCount[moduleIdx]; item++) {
       auto moduleItem = items[moduleIdx][item];
       std::string_view child =
           module.substr(moduleItem.begin, moduleItem.end - moduleItem.begin);
@@ -316,5 +491,18 @@ inline consteval State SetupState() {
       }
     }
   }
-  return state;
+
+  // End of memory (64KB) - STACKSIZE (8KB)
+  // TODO: Remove hard coded initalisaiton
+  Stack &stk = state.m_stack;
+  stk.m_stackPointer = 66560 - 1;
+  stk.m_basePointer = 66560 - 1;
+
+  STATUS setupCall = HandleCall(state, "$main");
+  if (setupCall != STATUS::OK) {
+    throw "setup call failed\n";
+  }
+
+  state.m_instrPointer = 0;
+  return run(state);
 }

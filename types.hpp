@@ -79,6 +79,20 @@ enum class OP {
   _f64,
 };
 
+enum class ParamType {
+  _i32,
+  _i64,
+  _f32,
+  _f64,
+  _funcref,
+  _externref,
+};
+
+enum class STATUS {
+  OK,
+  ERROR,
+};
+
 enum class Member {
   _none,
   _get,
@@ -157,7 +171,6 @@ enum class Member {
   _demote,
   _store,
   _load,
-
 };
 
 enum class OperandType {
@@ -177,9 +190,14 @@ struct Instr {
   OP m_op{};
   Member m_mem{};
   OperandType m_type{};
-  std::string_view m_operand;
+  uint64_t m_operandValue{};
+  std::string_view m_operand{};
 
   constexpr Instr() = default;
+  constexpr Instr(OP op, Member mem, OperandType type, std::string_view operand,
+                  uint64_t operandValue = 0)
+      : m_op(op), m_mem(mem), m_type(type), m_operand(operand),
+        m_operandValue(operandValue) {}
   constexpr Instr(std::string_view op, std::string_view operand)
       : m_operand(operand) {
     size_t pos = op.find(".");
@@ -200,7 +218,11 @@ struct Instr {
       m_op = OP::_return;
     } else if (_op == "call") {
       m_op = OP::_call;
-    } else {
+    } else if (_op == "halt") {
+      m_op = OP::_unreachable;
+    }
+    else
+    {
       throw "Local instructions not supported yet";
     }
 

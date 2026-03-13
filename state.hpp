@@ -13,10 +13,10 @@ struct Function {
   std::string_view m_name;
   uint32_t m_typeIndex = 0;
 
-  std::array<std::string_view, 16> m_params{};
+  std::array<ParamType, 16> m_params{};
   uint32_t m_paramCount = 0;
 
-  std::array<std::string_view, 32> m_locals{};
+  std::array<ParamType, 32> m_locals{};
   uint32_t m_localCount = 0;
 
   std::array<Instr, 256> m_body{};
@@ -39,9 +39,22 @@ struct Export {};
 
 struct Stack {
 
+  constexpr void Push(const Instr &instr) {
+    if (m_stackPointer == 0)
+      throw "Stack overflow";
+    m_data[--m_stackPointer] = instr;
+  }
+  
+  constexpr Instr Pop() {
+    if (m_stackPointer == STACKSIZE)
+      throw "Stack underflow";
+    return m_data[m_stackPointer++];
+  }
 
-private:
-  std::array<int64_t, STACKSIZE> m_data{};
+  uint64_t m_basePointer = 0;
+  uint64_t m_stackPointer = 0;
+  uint64_t m_framePointer = 0;
+  std::array<Instr, STACKSIZE> m_data{};
 };
 
 struct Heap {};
@@ -49,7 +62,10 @@ struct Heap {};
 struct Module {};
 
 struct State {
+  Stack m_stack{};
+  uint64_t m_instrPointer = 0;
   FunctionTable m_functionTable{};
+  Function *m_activeFunction = nullptr;
 };
 
 inline constexpr std::string_view program = R"(
@@ -175,6 +191,7 @@ inline constexpr std::string_view program = R"(
     return)
   (func $main (type 0) (param i32 i32) (result i32)
     (local i32)
+    halt
     call $__original_main
     local.set 2
     local.get 2

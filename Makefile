@@ -3,7 +3,7 @@
 # ----------------------
 
 CXX := g++
-CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I. 
+CXXFLAGS := -c -std=c++20 -O2 -Wall -Wextra -I. 
 LDFLAGS := 
 
 TARGET := ctwr
