@@ -33,7 +33,9 @@ struct Table {};
 
 struct Memory {};
 
-struct Global {};
+struct Global {
+  std::array<Instr, MAXGLOBALS> m_data{};
+};
 
 struct Export {};
 
@@ -44,7 +46,7 @@ struct Stack {
       throw "Stack overflow";
     m_data[--m_stackPointer] = instr;
   }
-  
+
   constexpr Instr Pop() {
     if (m_stackPointer == STACKSIZE)
       throw "Stack underflow";
@@ -63,6 +65,7 @@ struct Module {};
 
 struct State {
   Stack m_stack{};
+  Global m_global{};
   uint64_t m_instrPointer = 0;
   FunctionTable m_functionTable{};
   Function *m_activeFunction = nullptr;
@@ -191,11 +194,11 @@ inline constexpr std::string_view program = R"(
     return)
   (func $main (type 0) (param i32 i32) (result i32)
     (local i32)
-    halt
     call $__original_main
     local.set 2
     local.get 2
-    return)
+    return
+  )
   (table (;0;) 1 1 funcref)
   (memory (;0;) 2)
   (global $__stack_pointer (mut i32) (i32.const 66560))

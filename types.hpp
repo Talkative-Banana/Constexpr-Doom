@@ -178,6 +178,7 @@ enum class OperandType {
   _immediate,
   _address,
   _offset,
+  _hash,
 };
 
 enum Trap { terminate };
@@ -190,8 +191,8 @@ struct Instr {
   OP m_op{};
   Member m_mem{};
   OperandType m_type{};
-  uint64_t m_operandValue{};
   std::string_view m_operand{};
+  uint64_t m_operandValue{};
 
   constexpr Instr() = default;
   constexpr Instr(OP op, Member mem, OperandType type, std::string_view operand,
