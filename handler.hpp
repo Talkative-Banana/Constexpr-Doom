@@ -1,12 +1,12 @@
 
 #pragma once
 #include "constants.hpp"
+#include "parser.hpp"
 #include "state.hpp"
 #include "types.hpp"
 #include <array>
 #include <cstdint>
 #include <string_view>
-#include "parser.hpp"
 
 constexpr std::size_t constexpr_hash(std::string_view str) {
   std::size_t hash = 14695981039346656037ull; // FNV offset basis
@@ -158,4 +158,51 @@ consteval STATUS HandleReturn(State &state) {
       state.m_functionTable.m_data[fPtr.m_operandValue % MAXFUNCTIONS];
   state.m_activeFunction = &f;
   return STATUS::OK;
+}
+
+consteval STATUS HandleI32(State &state, const Instr &instr) {
+  Stack &stk = state.m_stack;
+  Global &global = state.m_global;
+  if (instr.m_mem == Member::_const) {
+    uint64_t value = instr.m_operandValue;
+    stk.Push(
+        Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", value});
+    state.m_instrPointer++;
+    return STATUS::OK;
+  } else if (instr.m_mem == Member::_add || instr.m_mem == Member::_sub ||
+             instr.m_mem == Member::_mul) {
+    Instr b = stk.Pop();
+    Instr a = stk.Pop();
+    uint64_t result;
+    if (instr.m_mem == Member::_add) {
+      result = a.m_operandValue + b.m_operandValue;
+    } else if (instr.m_mem == Member::_sub) {
+      result = a.m_operandValue - b.m_operandValue;
+    } else if (instr.m_mem == Member::_mul) {
+      result = a.m_operandValue * b.m_operandValue;
+    } else {
+      throw "Unsupported I32 operation";
+    }
+    stk.Push(
+        Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", result});
+    state.m_instrPointer++;
+    return STATUS::OK;
+  } else if (instr.m_mem == Member::_load || instr.m_mem == Member::_store) {
+    Instr val = stk.Pop();
+    Instr base = stk.Pop();
+    uint64_t offset = instr.m_operandValue;
+    if (instr.m_mem == Member::_load) {
+      if (base.m_operandValue + offset >= MAXGLOBALS) {
+        throw "Invalid memory access in i32.load";
+      }
+      Instr instr = global.m_data[base.m_operandValue + offset];
+      stk.Push(instr);
+    } else {
+      global.m_data[base.m_operandValue + offset] = val;
+    }
+    state.m_instrPointer++;
+    return STATUS::OK;
+  } else {
+    throw "Unsupported I32 member";
+  }
 }

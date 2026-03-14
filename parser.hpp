@@ -80,8 +80,8 @@ inline consteval uint32_t ParseModule(std::string_view module,
 }
 
 consteval std::pair<std::string_view, std::string_view>
-split2(std::string_view s) {
-  size_t pos = s.find(' ');
+split2(std::string_view s, char delimiter = ' ') {
+  size_t pos = s.find(delimiter);
   if (pos == std::string_view::npos)
     return {s, {}};
 

@@ -8,7 +8,7 @@ static constexpr int MAXPARTS = 4096;
 static constexpr int MAXFUNCTIONS = 4096;
 
 static constexpr int STACKSIZE = 131072; // 128KB
-static constexpr int MAXGLOBALS = 4096;
+static constexpr int MAXGLOBALS = 131072; // 128KB
 
 static constexpr std::string_view CALL = "call";
 static constexpr std::string_view MAIN = "$main";

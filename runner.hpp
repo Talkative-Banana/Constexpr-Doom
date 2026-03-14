@@ -11,7 +11,16 @@ consteval STATUS loop(State &state) {
     if (state.m_activeFunction == nullptr) {
       return STATUS::OK;
     }
-    Instr _op = state.m_activeFunction->m_body[state.m_instrPointer];
+
+    Instr _op{};
+    if (state.m_instrPointer == state.m_activeFunction->m_bodyCount) {
+      // We need to return from the function
+      // Compiler doesn't emit an explicit return at the end of the function
+      _op = Instr{"return", ""};
+    } else {
+      _op = state.m_activeFunction->m_body[state.m_instrPointer];
+    }
+
     switch (_op.m_op) {
     case OP::_nop: {
       continue;
@@ -43,6 +52,14 @@ consteval STATUS loop(State &state) {
       STATUS res = HandleCall(state, _op.m_operand);
       if (res == STATUS::ERROR) {
         throw "CALL Call Handling Failed!";
+        return STATUS::ERROR;
+      }
+      break;
+    }
+    case OP::_i32: {
+      STATUS res = HandleI32(state, _op);
+      if (res == STATUS::ERROR) {
+        throw "I32 Call Handling Failed!";
         return STATUS::ERROR;
       }
       break;
@@ -115,6 +132,13 @@ inline consteval STATUS Run() {
   Stack &stk = state.m_stack;
   stk.m_stackPointer = 66560 - 1;
   stk.m_basePointer = 66560 - 1;
+
+  // Initialize the global variable $__stack_pointer to the initial stack
+  // pointer value
+  Instr instr =
+      Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", 66560};
+  std::size_t hash = constexpr_hash("$__stack_pointer");
+  state.m_global.m_data[hash % MAXGLOBALS] = instr;
 
   STATUS setupCall = HandleCall(state, "$main");
   if (setupCall != STATUS::OK) {

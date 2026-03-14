@@ -221,9 +221,7 @@ struct Instr {
       m_op = OP::_call;
     } else if (_op == "halt") {
       m_op = OP::_unreachable;
-    }
-    else
-    {
+    } else {
       throw "Local instructions not supported yet";
     }
 
@@ -253,15 +251,45 @@ struct Instr {
       throw "Invalid Memeber Parsing";
     }
 
-    // Set the operand type
-    if (m_operand.empty()) {
+    if (m_op == OP::_local || (m_op == OP::_i32 && m_mem == Member::_const)) {
+      // Parse the operand as an immediate value for local and global
+      // instructions
+      uint64_t value = 0;
+      size_t type_pos = 0;
+      while (type_pos < m_operand.size() && m_operand[type_pos] >= '0' &&
+             m_operand[type_pos] <= '9') {
+        value = value * 10 + (m_operand[type_pos] - '0');
+        type_pos++;
+      }
+      m_operandValue = value;
+    } else if (m_operand.empty()) {
+      // Set the operand type
       m_type = OperandType::_none;
     } else if (m_operand[0] >= '0' && m_operand[0] <= '9') {
       m_type = OperandType::_immediate;
+      // Parse the immediate value
+      uint64_t value = 0;
+      size_t type_pos = 0;
+      while (type_pos < m_operand.size() && m_operand[type_pos] >= '0' &&
+             m_operand[type_pos] <= '9') {
+        value = value * 10 + (m_operand[type_pos] - '0');
+        type_pos++;
+      }
+      m_operandValue = value;
     } else if (m_operand[0] == '$') {
       m_type = OperandType::_address;
-    } else if (m_operand[0] == 'o') {
+    } else if (m_operand[0] == 'o') { 
+      // i32 store offset
       m_type = OperandType::_offset;
+      // Parse the immediate value
+      uint64_t value = 0;
+      size_t type_pos = 7; // skip the offset= part
+      while (type_pos < m_operand.size() && m_operand[type_pos] >= '0' &&
+             m_operand[type_pos] <= '9') {
+        value = value * 10 + (m_operand[type_pos] - '0');
+        type_pos++;
+      }
+      m_operandValue = value;
     } else {
       throw "Invalid Operand Parsing";
     }

@@ -18,7 +18,7 @@ $(TARGET): $(OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Compile main.cpp to object
-main.o: main.cpp parser.hpp state.hpp types.hpp constants.hpp
+main.o: main.cpp parser.hpp state.hpp types.hpp constants.hpp handler.hpp runner.hpp
 	$(CXX) $(CXXFLAGS) -c main.cpp -o main.o
 
 # Clean object files and executable
