@@ -23,8 +23,8 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   // Get the function pointer and return address from the stack if exists
   if (state.m_activeFunction != nullptr) {
     std::size_t hash = constexpr_hash(state.m_activeFunction->m_name);
-    Instr fPtr = Instr{OP::_i64, Member::_none, OperandType::_hash, "0",
-                       static_cast<int64_t>(hash)};
+    int64_t h = static_cast<int64_t>(hash & 0x7fffffffffffffffULL);
+    Instr fPtr = Instr{OP::_i64, Member::_none, OperandType::_hash, "0", h};
     // Push function address to return to after function call
     stk.Push(fPtr);
   } else {
@@ -49,7 +49,8 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   // get hash of the function name and use it to get the function type and
   // argument count
   size_t hash = constexpr_hash(funcName);
-  Function &f = state.m_functionTable.m_data[hash % MAXFUNCTIONS];
+  int64_t h = static_cast<int64_t>(hash & 0x7fffffffffffffffULL);
+  Function &f = state.m_functionTable.m_data[h % MAXFUNCTIONS];
 
   // Push the function arguments
   uint32_t paramCount = f.m_paramCount;
@@ -185,10 +186,94 @@ consteval STATUS HandleReturn(State &state) {
     state.m_activeFunction = nullptr;
     return STATUS::OK;
   }
+
+  if (fPtr.m_operandValue < 0) {
+    throw "fPtr corrupted";
+  }
+
   Function &f =
       state.m_functionTable.m_data[fPtr.m_operandValue % MAXFUNCTIONS];
   state.m_activeFunction = &f;
   return STATUS::OK;
+}
+
+consteval STATUS HandleBlock(State &state) {
+  Function *f = state.m_activeFunction;
+  uint64_t instrPointer = state.m_instrPointer;
+
+  bool blockFound = false;
+  uint32_t blockId{};
+  for (uint32_t blockIdx = 0; blockIdx < f->m_blockIdx; blockIdx++) {
+    if (f->m_blockTable[blockIdx].m_blockStart == instrPointer) {
+      blockId = blockIdx;
+      blockFound = true;
+      break;
+    }
+  }
+
+  if (!blockFound) {
+    throw "Block Idx not found";
+  }
+
+  f->Push(blockId);
+  state.m_instrPointer++;
+  return STATUS::OK;
+}
+
+consteval STATUS HandleBranch(State &state, Instr &instr) {
+  Function *f = state.m_activeFunction;
+
+  // Number of blocks to remove
+  int blocksToRemove = instr.m_operandValue + 1;
+
+  Block block{};
+  while (blocksToRemove--) {
+    block = f->Pop();
+  }
+  state.m_instrPointer = block.m_blockEnd + 1;
+  return STATUS::OK;
+}
+
+consteval STATUS HandleBranchIf(State &state, Instr &instr) {
+  Function *f = state.m_activeFunction;
+
+  Stack &opStack = state.m_opStack;
+  Instr topInstr = opStack.Pop();
+
+  // Check if we want to take branch
+  if (topInstr.m_operandValue) {
+
+    // Number of blocks to remove
+    int blocksToRemove = instr.m_operandValue + 1;
+
+    Block block{};
+    while (blocksToRemove--) {
+      block = f->Pop();
+    }
+
+    if (block.m_blockEnd == 0) {
+      throw "jmp address is 0";
+    }
+    state.m_instrPointer = block.m_blockEnd + 1;
+  } else {
+    state.m_instrPointer++;
+  }
+  return STATUS::OK;
+}
+
+consteval STATUS HandleEnd(State &state) {
+  state.m_instrPointer++;
+  return STATUS::OK;
+}
+
+consteval bool isArithmetic(const Instr &instr) {
+  return instr.m_mem == Member::_add || instr.m_mem == Member::_sub ||
+         instr.m_mem == Member::_mul || instr.m_mem == Member::_le_s ||
+         instr.m_mem == Member::_and || instr.m_mem == Member::_eqz;
+}
+
+consteval bool isSingleOperand(const Instr &instr) {
+  return instr.m_mem == Member::_eqz;
 }
 
 consteval STATUS HandleI32(State &state, const Instr &instr) {
@@ -200,10 +285,12 @@ consteval STATUS HandleI32(State &state, const Instr &instr) {
         Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", value});
     state.m_instrPointer++;
     return STATUS::OK;
-  } else if (instr.m_mem == Member::_add || instr.m_mem == Member::_sub ||
-             instr.m_mem == Member::_mul) {
+  } else if (isArithmetic(instr)) {
     Instr b = op_stk.Pop();
-    Instr a = op_stk.Pop();
+    Instr a{};
+    if (!isSingleOperand(instr)) {
+      a = op_stk.Pop();
+    }
     int64_t result;
     if (instr.m_mem == Member::_add) {
       result = a.m_operandValue + b.m_operandValue;
@@ -211,6 +298,12 @@ consteval STATUS HandleI32(State &state, const Instr &instr) {
       result = a.m_operandValue - b.m_operandValue;
     } else if (instr.m_mem == Member::_mul) {
       result = a.m_operandValue * b.m_operandValue;
+    } else if (instr.m_mem == Member::_le_s) {
+      result = a.m_operandValue <= b.m_operandValue;
+    } else if (instr.m_mem == Member::_and) {
+      result = a.m_operandValue & b.m_operandValue;
+    } else if (instr.m_mem == Member::_eqz) {
+      result = (b.m_operandValue == 0) ? 1 : 0;
     } else {
       throw "Unsupported I32 operation";
     }

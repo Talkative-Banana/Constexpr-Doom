@@ -250,7 +250,19 @@ consteval Function ParseFunction(std::string_view func) {
         if (f.m_bodyCount >= f.m_body.size())
           throw "Too many instructions";
 
-        f.m_body[f.m_bodyCount++] = ParseInstruction(line);
+        Instr instr = ParseInstruction(line);
+        f.m_body[f.m_bodyCount++] = instr;
+
+        // If a block instruction
+        if (instr.m_op == OP::_block) {
+          uint32_t idx = f.m_blockIdx++;
+          Block &block = f.m_blockTable[idx];
+          block.m_blockStart = f.m_bodyCount - 1;
+          f.Push(idx);
+        } else if (instr.m_op == OP::_end) {
+          Block &block = f.Pop();
+          block.m_blockEnd = f.m_bodyCount - 1;
+        }
       }
 
       line_start = i + 1;
@@ -286,7 +298,8 @@ inline consteval uint32_t SetupModule(std::string_view child, State &state) {
       throw "Function index out of table range";
     }
     std::size_t hash = constexpr_hash(f.m_name);
-    state.m_functionTable.m_data[hash % MAXFUNCTIONS] = f;
+    int64_t h = static_cast<int64_t>(hash & 0x7fffffffffffffffULL);
+    state.m_functionTable.m_data[h % MAXFUNCTIONS] = f;
   } else if (type == WASMOP::_type) {
   } else if (type == WASMOP::_table) {
   } else if (type == WASMOP::_memory) {

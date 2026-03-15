@@ -76,9 +76,40 @@ consteval STATUS loop(State &state) {
       throw "CPU Halt!";
       return STATUS::ERROR;
     }
-    default: {
-      state.m_instrPointer++;
+    case OP::_block: {
+      STATUS res = HandleBlock(state);
+      if (res == STATUS::ERROR) {
+        throw "BLOCK Call Handling Failed!";
+        return STATUS::ERROR;
+      }
       break;
+    }
+    case OP::_br: {
+      STATUS res = HandleBranch(state, _op);
+      if (res == STATUS::ERROR) {
+        throw "BRANCH Call Handling Failed!";
+        return STATUS::ERROR;
+      }
+      break;
+    }
+    case OP::_br_if: {
+      STATUS res = HandleBranchIf(state, _op);
+      if (res == STATUS::ERROR) {
+        throw "BRANCHIF Call Handling Failed!";
+        return STATUS::ERROR;
+      }
+      break;
+    }
+    case OP::_end: {
+      STATUS res = HandleEnd(state);
+      if (res == STATUS::ERROR) {
+        throw "END Call Handling Failed!";
+        return STATUS::ERROR;
+      }
+      break;
+    }
+    default: {
+      throw "Instruction not handled";
     }
     }
   }
@@ -168,7 +199,7 @@ inline consteval STATUS Run() {
     throw "Invalid return value from main!";
   }
 
-  if (returnValue.m_operandValue != -7) {
+  if (returnValue.m_operandValue != 55) {
     throw "Invalid return value from main!";
   }
   return STATUS::OK;

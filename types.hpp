@@ -36,6 +36,7 @@ enum class OP {
   _select,
   _unreachable,
   _block,
+  _end,
   _loop,
   _if,
   _br,
@@ -153,10 +154,10 @@ enum class Member {
   _copysign,
   _eqz,
   _ne,
-  _lt_sx,
-  _gt_sx,
-  _le_sx,
-  _ge_sx,
+  _lt_s,
+  _gt_s,
+  _le_s,
+  _ge_s,
   _lt,
   _gt,
   _le,
@@ -221,6 +222,15 @@ struct Instr {
       m_op = OP::_call;
     } else if (_op == "halt") {
       m_op = OP::_unreachable;
+    } else if (_op == "block") {
+      m_op = OP::_block;
+      return;
+    } else if (_op == "br_if") {
+      m_op = OP::_br_if;
+    } else if (_op == "br") {
+      m_op = OP::_br;
+    } else if (_op == "end") {
+      m_op = OP::_end;
     } else {
       throw "Local instructions not supported yet";
     }
@@ -247,6 +257,12 @@ struct Instr {
       m_mem = Member::_store;
     } else if (_mem == "load") {
       m_mem = Member::_load;
+    } else if (_mem == "le_s") {
+      m_mem = Member::_le_s;
+    } else if (_mem == "and") {
+      m_mem = Member::_and;
+    } else if (_mem == "eqz") {
+      m_mem = Member::_eqz;
     } else {
       throw "Invalid Memeber Parsing";
     }

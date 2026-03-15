@@ -1,8 +1,19 @@
-int add(int a, int b) { return a + b; }
-int sub(int a, int b) { return a - b; }
+int fact(int n) {
+  if (n <= 1)
+    return 1;
+
+  return n * fact(n - 1);
+}
+
+int fibbo(int n) {
+  if (n <= 2) {
+    return 1;
+  }
+
+  return fibbo(n - 1) + fibbo(n - 2);
+}
 
 int main() {
-  int a = 5, b = 12;
-  int c = sub(a, b);
-  return c;
+  int r = fibbo(3);
+  return r;
 }
