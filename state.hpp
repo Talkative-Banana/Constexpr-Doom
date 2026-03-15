@@ -48,7 +48,7 @@ struct Stack {
   }
 
   constexpr Instr Pop() {
-    if (m_stackPointer == STACKSIZE)
+    if (m_stackPointer == 66560)
       throw "Stack underflow";
     return m_data[m_stackPointer++];
   }
@@ -65,6 +65,7 @@ struct Module {};
 
 struct State {
   Stack m_stack{};
+  Stack m_opStack{};
   Global m_global{};
   uint64_t m_instrPointer = 0;
   FunctionTable m_functionTable{};
@@ -132,7 +133,7 @@ inline constexpr std::string_view program = R"(
     local.get 7
     return)
   (func $__original_main (type 1) (result i32)
-    (local i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32)
+    (local i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32)
     global.get $__stack_pointer
     local.set 0
     i32.const 16
@@ -148,12 +149,12 @@ inline constexpr std::string_view program = R"(
     local.get 2
     local.get 3
     i32.store offset=12
-    i32.const 10
+    i32.const 12
     local.set 4
     local.get 2
     local.get 4
     i32.store offset=8
-    i32.const 4
+    i32.const 5
     local.set 5
     local.get 2
     local.get 5
@@ -182,23 +183,28 @@ inline constexpr std::string_view program = R"(
     local.get 11
     i32.sub
     local.set 12
-    i32.const 16
-    local.set 13
     local.get 2
-    local.get 13
-    i32.add
-    local.set 14
-    local.get 14
-    global.set $__stack_pointer
     local.get 12
+    i32.store
+    local.get 2
+    i32.load
+    local.set 13
+    i32.const 16
+    local.set 14
+    local.get 2
+    local.get 14
+    i32.add
+    local.set 15
+    local.get 15
+    global.set $__stack_pointer
+    local.get 13
     return)
   (func $main (type 0) (param i32 i32) (result i32)
     (local i32)
     call $__original_main
     local.set 2
     local.get 2
-    return
-  )
+    return)
   (table (;0;) 1 1 funcref)
   (memory (;0;) 2)
   (global $__stack_pointer (mut i32) (i32.const 66560))

@@ -19,6 +19,7 @@ constexpr std::size_t constexpr_hash(std::string_view str) {
 
 constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   Stack &stk = state.m_stack;
+  Stack &op_stk = state.m_opStack;
   // Get the function pointer and return address from the stack if exists
   if (state.m_activeFunction != nullptr) {
     std::size_t hash = constexpr_hash(state.m_activeFunction->m_name);
@@ -44,49 +45,71 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   // Update the base pointer to the current stack pointer for the callee
   stk.m_basePointer = stk.m_stackPointer;
 
-  // Push the function arguments
   // get hash of the function name and use it to get the function type and
   // argument count
   size_t hash = constexpr_hash(funcName);
   Function &f = state.m_functionTable.m_data[hash % MAXFUNCTIONS];
-  uint32_t argCount = f.m_paramCount;
-  uint32_t localCount = f.m_localCount;
 
-  // TODO: Get the actual argument value from the function arguments instead of
-  // pushing 0
-  for (uint32_t i = 0; i < argCount; i++) {
+  // Push the function arguments
+  uint32_t paramCount = f.m_paramCount;
+  std::array<Instr, LOCALINSTRSIZE> args{};
+
+  if (paramCount > LOCALINSTRSIZE) {
+    throw "too many args";
+  }
+
+  for (uint32_t i = paramCount; i-- > 0;) {
+    args[i] = op_stk.Pop();
+  }
+
+  for (uint32_t i = 0; i < paramCount; ++i) {
     ParamType &param = f.m_params[i];
     if (param == ParamType::_i32) {
-      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_immediate, "0"});
+      Instr instr = args[i];
+      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_immediate, "0",
+                     instr.m_operandValue});
     } else if (param == ParamType::_i64) {
-      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_immediate, "0"});
+      Instr instr = args[i];
+      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_immediate, "0",
+                     instr.m_operandValue});
     } else if (param == ParamType::_f32) {
-      stk.Push(Instr{OP::_f32, Member::_none, OperandType::_immediate, "0"});
+      Instr instr = args[i];
+      stk.Push(Instr{OP::_f32, Member::_none, OperandType::_immediate, "0",
+                     instr.m_operandValue});
     } else if (param == ParamType::_f64) {
-      stk.Push(Instr{OP::_f64, Member::_none, OperandType::_immediate, "0"});
+      Instr instr = args[i];
+      stk.Push(Instr{OP::_f64, Member::_none, OperandType::_immediate, "0",
+                     instr.m_operandValue});
     } else if (param == ParamType::_funcref) {
-      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_address, "0"});
+      Instr instr = args[i];
+      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_address, "0",
+                     instr.m_operandValue});
     } else if (param == ParamType::_externref) {
-      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_address, "0"});
+      Instr instr = args[i];
+      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_address, "0",
+                     instr.m_operandValue});
     } else {
       throw "Unsupported parameter type";
     }
   }
+  // Args are already pushed by the caller, so we just need to push space for
+  // local variables
+  uint32_t localCount = f.m_localCount;
   // Push local variables
   for (uint32_t i = 0; i < localCount; i++) {
     ParamType &local = f.m_locals[i];
     if (local == ParamType::_i32) {
-      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_immediate, "0"});
+      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", 0});
     } else if (local == ParamType::_i64) {
-      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_immediate, "0"});
+      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_immediate, "0", 0});
     } else if (local == ParamType::_f32) {
-      stk.Push(Instr{OP::_f32, Member::_none, OperandType::_immediate, "0"});
+      stk.Push(Instr{OP::_f32, Member::_none, OperandType::_immediate, "0", 0});
     } else if (local == ParamType::_f64) {
-      stk.Push(Instr{OP::_f64, Member::_none, OperandType::_immediate, "0"});
+      stk.Push(Instr{OP::_f64, Member::_none, OperandType::_immediate, "0", 0});
     } else if (local == ParamType::_funcref) {
-      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_address, "0"});
+      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_address, "0", 0});
     } else if (local == ParamType::_externref) {
-      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_address, "0"});
+      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_address, "0", 0});
     } else {
       throw "Unsupported local variable type";
     }
@@ -100,6 +123,9 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
 
 consteval STATUS HandleLocal(State &state, const Instr &instr) {
   Stack &stk = state.m_stack;
+  Stack &op_stk = state.m_opStack;
+
+  // Get and Set local variables using the operand as the offset from the base
   if (stk.m_basePointer < instr.m_operandValue + 1) {
     throw "Invalid Address used in local.get";
   }
@@ -107,9 +133,9 @@ consteval STATUS HandleLocal(State &state, const Instr &instr) {
   if (instr.m_mem == Member::_get) {
     Instr instr = Instr{OP::_i64, Member::_none, OperandType::_immediate, "0",
                         stk.m_data[address].m_operandValue};
-    stk.Push(instr);
+    op_stk.Push(instr);
   } else {
-    Instr instr = stk.Pop();
+    Instr instr = op_stk.Pop();
     stk.m_data[address] = instr;
   }
   state.m_instrPointer++;
@@ -118,20 +144,24 @@ consteval STATUS HandleLocal(State &state, const Instr &instr) {
 
 consteval STATUS HandleGlobal(State &state, const Instr &instr) {
   Global &global = state.m_global;
-  Stack &stk = state.m_stack;
+  Stack &op_stk = state.m_opStack;
 
   // Get and Set global variables using the operand as the key in the global
   // array
   std::string_view operand = instr.m_operand;
-  size_t hash = constexpr_hash(operand);
-  if (instr.m_mem == Member::_get) {
-    Instr instr = global.m_data[hash % MAXGLOBALS];
-    stk.Push(instr);
-  } else {
-    Instr instr = stk.Pop();
-    global.m_data[hash % MAXGLOBALS] = instr;
+  if (operand.empty()) {
+    throw "Global instructions must have an operand";
   }
 
+  if (operand == "$__stack_pointer") {
+    if (instr.m_mem == Member::_get) {
+      Instr instr = global.m_data[GLOBALSTACKPOINTERLOCATION];
+      op_stk.Push(instr);
+    } else {
+      Instr instr = op_stk.Pop();
+      global.m_data[GLOBALSTACKPOINTERLOCATION] = instr;
+    }
+  }
   state.m_instrPointer++;
   return STATUS::OK;
 }
@@ -161,18 +191,18 @@ consteval STATUS HandleReturn(State &state) {
 }
 
 consteval STATUS HandleI32(State &state, const Instr &instr) {
-  Stack &stk = state.m_stack;
+  Stack &op_stk = state.m_opStack;
   Global &global = state.m_global;
   if (instr.m_mem == Member::_const) {
     uint64_t value = instr.m_operandValue;
-    stk.Push(
+    op_stk.Push(
         Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", value});
     state.m_instrPointer++;
     return STATUS::OK;
   } else if (instr.m_mem == Member::_add || instr.m_mem == Member::_sub ||
              instr.m_mem == Member::_mul) {
-    Instr b = stk.Pop();
-    Instr a = stk.Pop();
+    Instr b = op_stk.Pop();
+    Instr a = op_stk.Pop();
     uint64_t result;
     if (instr.m_mem == Member::_add) {
       result = a.m_operandValue + b.m_operandValue;
@@ -183,21 +213,26 @@ consteval STATUS HandleI32(State &state, const Instr &instr) {
     } else {
       throw "Unsupported I32 operation";
     }
-    stk.Push(
+    op_stk.Push(
         Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", result});
     state.m_instrPointer++;
     return STATUS::OK;
   } else if (instr.m_mem == Member::_load || instr.m_mem == Member::_store) {
-    Instr val = stk.Pop();
-    Instr base = stk.Pop();
+
     uint64_t offset = instr.m_operandValue;
     if (instr.m_mem == Member::_load) {
-      if (base.m_operandValue + offset >= MAXGLOBALS) {
+      Instr base = op_stk.Pop();
+      if (base.m_operandValue + offset >= 66560) {
         throw "Invalid memory access in i32.load";
       }
       Instr instr = global.m_data[base.m_operandValue + offset];
-      stk.Push(instr);
+      op_stk.Push(instr);
     } else {
+      Instr val = op_stk.Pop();
+      Instr base = op_stk.Pop();
+      if (base.m_operandValue + offset >= 66560) {
+        throw "Invalid memory access in i32.store";
+      }
       global.m_data[base.m_operandValue + offset] = val;
     }
     state.m_instrPointer++;

@@ -130,15 +130,21 @@ inline consteval STATUS Run() {
   // End of memory (64KB) - STACKSIZE (8KB)
   // TODO: Remove hard coded initalisaiton
   Stack &stk = state.m_stack;
-  stk.m_stackPointer = 66560 - 1;
-  stk.m_basePointer = 66560 - 1;
+  stk.m_basePointer = 66560;
+  stk.m_stackPointer = 66560;
+
+  Stack &op_stk = state.m_opStack;
+  op_stk.m_basePointer = 66560;
+  op_stk.m_stackPointer = 66560;
 
   // Initialize the global variable $__stack_pointer to the initial stack
   // pointer value
   Instr instr =
       Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", 66560};
-  std::size_t hash = constexpr_hash("$__stack_pointer");
-  state.m_global.m_data[hash % MAXGLOBALS] = instr;
+  state.m_global.m_data[GLOBALSTACKPOINTERLOCATION] = instr;
+
+  op_stk.Push(Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", 0});
+  op_stk.Push(Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", 0});
 
   STATUS setupCall = HandleCall(state, "$main");
   if (setupCall != STATUS::OK) {
@@ -146,5 +152,24 @@ inline consteval STATUS Run() {
   }
 
   state.m_instrPointer = 0;
-  return loop(state);
+  STATUS execRes = loop(state);
+
+  if (execRes != STATUS::OK) {
+    throw "Execution Failed!";
+  }
+
+  // 66563
+  if (state.m_opStack.m_stackPointer != 66559) {
+    throw "No return value from main!";
+  }
+
+  Instr returnValue = state.m_opStack.Pop();
+  if (returnValue.m_type != OperandType::_immediate) {
+    throw "Invalid return value from main!";
+  }
+
+  if (returnValue.m_operandValue != 10) {
+    throw "Invalid return value from main!";
+  }
+  return STATUS::OK;
 }
