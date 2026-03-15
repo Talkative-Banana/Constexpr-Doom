@@ -23,7 +23,8 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   // Get the function pointer and return address from the stack if exists
   if (state.m_activeFunction != nullptr) {
     std::size_t hash = constexpr_hash(state.m_activeFunction->m_name);
-    Instr fPtr = Instr{OP::_i64, Member::_none, OperandType::_hash, "0", hash};
+    Instr fPtr = Instr{OP::_i64, Member::_none, OperandType::_hash, "0",
+                       static_cast<int64_t>(hash)};
     // Push function address to return to after function call
     stk.Push(fPtr);
   } else {
@@ -34,11 +35,11 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   }
 
   Instr iPtr = Instr{OP::_i64, Member::_none, OperandType::_immediate, "0",
-                     state.m_instrPointer + 1};
+                     static_cast<int64_t>(state.m_instrPointer + 1)};
   // Push return address to recover it after function call
   stk.Push(iPtr);
   Instr bPtr = Instr{OP::_i64, Member::_none, OperandType::_immediate, "0",
-                     stk.m_basePointer};
+                     static_cast<int64_t>(stk.m_basePointer)};
   // Push the base ptr to recover it after function call
   stk.Push(bPtr);
 
@@ -126,7 +127,7 @@ consteval STATUS HandleLocal(State &state, const Instr &instr) {
   Stack &op_stk = state.m_opStack;
 
   // Get and Set local variables using the operand as the offset from the base
-  if (stk.m_basePointer < instr.m_operandValue + 1) {
+  if (static_cast<int64_t>(stk.m_basePointer) < instr.m_operandValue + 1) {
     throw "Invalid Address used in local.get";
   }
   uint64_t address = stk.m_basePointer - instr.m_operandValue - 1;
@@ -194,7 +195,7 @@ consteval STATUS HandleI32(State &state, const Instr &instr) {
   Stack &op_stk = state.m_opStack;
   Global &global = state.m_global;
   if (instr.m_mem == Member::_const) {
-    uint64_t value = instr.m_operandValue;
+    int64_t value = instr.m_operandValue;
     op_stk.Push(
         Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", value});
     state.m_instrPointer++;
@@ -203,7 +204,7 @@ consteval STATUS HandleI32(State &state, const Instr &instr) {
              instr.m_mem == Member::_mul) {
     Instr b = op_stk.Pop();
     Instr a = op_stk.Pop();
-    uint64_t result;
+    int64_t result;
     if (instr.m_mem == Member::_add) {
       result = a.m_operandValue + b.m_operandValue;
     } else if (instr.m_mem == Member::_sub) {

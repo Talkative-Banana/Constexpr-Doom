@@ -192,11 +192,11 @@ struct Instr {
   Member m_mem{};
   OperandType m_type{};
   std::string_view m_operand{};
-  uint64_t m_operandValue{};
+  int64_t m_operandValue{};
 
   constexpr Instr() = default;
   constexpr Instr(OP op, Member mem, OperandType type, std::string_view operand,
-                  uint64_t operandValue = 0)
+                  int64_t operandValue = 0)
       : m_op(op), m_mem(mem), m_type(type), m_operand(operand),
         m_operandValue(operandValue) {}
   constexpr Instr(std::string_view op, std::string_view operand)
@@ -254,42 +254,75 @@ struct Instr {
     if (m_op == OP::_local || (m_op == OP::_i32 && m_mem == Member::_const)) {
       // Parse the operand as an immediate value for local and global
       // instructions
-      uint64_t value = 0;
+      int64_t value = 0;
       size_t type_pos = 0;
-      while (type_pos < m_operand.size() && m_operand[type_pos] >= '0' &&
-             m_operand[type_pos] <= '9') {
+      bool isNeg = false;
+      while (type_pos < m_operand.size() &&
+             ((m_operand[type_pos] >= '0' && m_operand[type_pos] <= '9') ||
+              m_operand[type_pos] == '-')) {
+        if (m_operand[type_pos] == '-') {
+          isNeg = true;
+          type_pos++;
+          continue;
+        }
         value = value * 10 + (m_operand[type_pos] - '0');
         type_pos++;
       }
-      m_operandValue = value;
+      if (isNeg) {
+        m_operandValue = -value;
+      } else {
+        m_operandValue = value;
+      }
     } else if (m_operand.empty()) {
       // Set the operand type
       m_type = OperandType::_none;
     } else if (m_operand[0] >= '0' && m_operand[0] <= '9') {
       m_type = OperandType::_immediate;
       // Parse the immediate value
-      uint64_t value = 0;
+      int64_t value = 0;
       size_t type_pos = 0;
-      while (type_pos < m_operand.size() && m_operand[type_pos] >= '0' &&
-             m_operand[type_pos] <= '9') {
+      bool isNeg = false;
+      while (type_pos < m_operand.size() &&
+             ((m_operand[type_pos] >= '0' && m_operand[type_pos] <= '9') ||
+              m_operand[type_pos] == '-')) {
+        if (m_operand[type_pos] == '-') {
+          isNeg = true;
+          type_pos++;
+          continue;
+        }
         value = value * 10 + (m_operand[type_pos] - '0');
         type_pos++;
       }
-      m_operandValue = value;
+      if (isNeg) {
+        m_operandValue = -value;
+      } else {
+        m_operandValue = value;
+      }
     } else if (m_operand[0] == '$') {
       m_type = OperandType::_address;
-    } else if (m_operand[0] == 'o') { 
+    } else if (m_operand[0] == 'o') {
       // i32 store offset
       m_type = OperandType::_offset;
       // Parse the immediate value
-      uint64_t value = 0;
+      int64_t value = 0;
       size_t type_pos = 7; // skip the offset= part
-      while (type_pos < m_operand.size() && m_operand[type_pos] >= '0' &&
-             m_operand[type_pos] <= '9') {
+      bool isNeg = false;
+      while (type_pos < m_operand.size() &&
+             ((m_operand[type_pos] >= '0' && m_operand[type_pos] <= '9') ||
+              m_operand[type_pos] == '-')) {
+        if (m_operand[type_pos] == '-') {
+          isNeg = true;
+          type_pos++;
+          continue;
+        }
         value = value * 10 + (m_operand[type_pos] - '0');
         type_pos++;
       }
-      m_operandValue = value;
+      if (isNeg) {
+        m_operandValue = -value;
+      } else {
+        m_operandValue = value;
+      }
     } else {
       throw "Invalid Operand Parsing";
     }

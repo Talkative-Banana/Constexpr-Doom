@@ -168,7 +168,7 @@ inline consteval STATUS Run() {
     throw "Invalid return value from main!";
   }
 
-  if (returnValue.m_operandValue != 10) {
+  if (returnValue.m_operandValue != -7) {
     throw "Invalid return value from main!";
   }
   return STATUS::OK;
