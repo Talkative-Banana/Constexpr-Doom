@@ -230,7 +230,16 @@ consteval STATUS HandleBranch(State &state, Instr &instr) {
   while (blocksToRemove--) {
     block = f->Pop();
   }
-  state.m_instrPointer = block.m_blockEnd + 1;
+
+  if (block.m_blockEnd == 0) {
+    throw "jmp address is 0";
+  }
+
+  if (block.m_isLoop) {
+    state.m_instrPointer = block.m_blockStart; // Jump to beginnig of the block
+  } else {
+    state.m_instrPointer = block.m_blockEnd + 1; // Jump to end of block
+  }
   return STATUS::OK;
 }
 
@@ -254,7 +263,12 @@ consteval STATUS HandleBranchIf(State &state, Instr &instr) {
     if (block.m_blockEnd == 0) {
       throw "jmp address is 0";
     }
-    state.m_instrPointer = block.m_blockEnd + 1;
+    if (block.m_isLoop) {
+      state.m_instrPointer =
+          block.m_blockStart; // Jump to beginnig of the block
+    } else {
+      state.m_instrPointer = block.m_blockEnd + 1; // Jump to end of block
+    }
   } else {
     state.m_instrPointer++;
   }
@@ -262,14 +276,33 @@ consteval STATUS HandleBranchIf(State &state, Instr &instr) {
 }
 
 consteval STATUS HandleEnd(State &state) {
+  Function *f = state.m_activeFunction;
+
+  // Check if this end matches the block on top of the stack
+  if (f->m_blockStackPointer < BLOCKSTACKSIZE) {
+    uint32_t topIdx = f->m_blockStack[f->m_blockStackPointer];
+    Block &top = f->m_blockTable[topIdx];
+
+    if (top.m_blockEnd == state.m_instrPointer) {
+      f->Pop(); // naturally reached end of this block
+    }
+  }
   state.m_instrPointer++;
   return STATUS::OK;
+}
+
+consteval STATUS HandleLoop(State &state) {
+  // Loop is a special kind of block
+  return HandleBlock(state);
 }
 
 consteval bool isArithmetic(const Instr &instr) {
   return instr.m_mem == Member::_add || instr.m_mem == Member::_sub ||
          instr.m_mem == Member::_mul || instr.m_mem == Member::_le_s ||
-         instr.m_mem == Member::_and || instr.m_mem == Member::_eqz;
+         instr.m_mem == Member::_and || instr.m_mem == Member::_eqz ||
+         instr.m_mem == Member::_lt_s || instr.m_mem == Member::_rem_s ||
+         instr.m_mem == Member::_shl || instr.m_mem == Member::_div_s ||
+         instr.m_mem == Member::_ne || instr.m_mem == Member::_shr_s;
 }
 
 consteval bool isSingleOperand(const Instr &instr) {
@@ -304,6 +337,18 @@ consteval STATUS HandleI32(State &state, const Instr &instr) {
       result = a.m_operandValue & b.m_operandValue;
     } else if (instr.m_mem == Member::_eqz) {
       result = (b.m_operandValue == 0) ? 1 : 0;
+    } else if (instr.m_mem == Member::_lt_s) {
+      result = a.m_operandValue < b.m_operandValue;
+    } else if (instr.m_mem == Member::_rem_s) {
+      result = a.m_operandValue % b.m_operandValue;
+    } else if (instr.m_mem == Member::_shl) {
+      result = a.m_operandValue << b.m_operandValue;
+    } else if (instr.m_mem == Member::_div_s) {
+      result = a.m_operandValue / b.m_operandValue;
+    } else if (instr.m_mem == Member::_ne) {
+      result = a.m_operandValue != b.m_operandValue;
+    } else if (instr.m_mem == Member::_shr_s) {
+      result = a.m_operandValue >> b.m_operandValue;
     } else {
       throw "Unsupported I32 operation";
     }
@@ -311,10 +356,12 @@ consteval STATUS HandleI32(State &state, const Instr &instr) {
         Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", result});
     state.m_instrPointer++;
     return STATUS::OK;
-  } else if (instr.m_mem == Member::_load || instr.m_mem == Member::_store) {
+  } else if ((instr.m_mem == Member::_load) ||
+             (instr.m_mem == Member::_load8_u) ||
+             (instr.m_mem == Member::_store)) {
 
     uint64_t offset = instr.m_operandValue;
-    if (instr.m_mem == Member::_load) {
+    if (instr.m_mem == Member::_load || (instr.m_mem == Member::_load8_u)) {
       Instr base = op_stk.Pop();
       if (base.m_operandValue + offset >= 66560) {
         throw "Invalid memory access in i32.load";

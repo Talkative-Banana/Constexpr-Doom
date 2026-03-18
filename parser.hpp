@@ -254,10 +254,11 @@ consteval Function ParseFunction(std::string_view func) {
         f.m_body[f.m_bodyCount++] = instr;
 
         // If a block instruction
-        if (instr.m_op == OP::_block) {
+        if (instr.m_op == OP::_block || instr.m_op == OP::_loop) {
           uint32_t idx = f.m_blockIdx++;
           Block &block = f.m_blockTable[idx];
           block.m_blockStart = f.m_bodyCount - 1;
+          block.m_isLoop = instr.m_op == OP::_loop;
           f.Push(idx);
         } else if (instr.m_op == OP::_end) {
           Block &block = f.Pop();
@@ -305,6 +306,7 @@ inline consteval uint32_t SetupModule(std::string_view child, State &state) {
   } else if (type == WASMOP::_memory) {
   } else if (type == WASMOP::_global) {
   } else if (type == WASMOP::_export) {
+  } else if (type == WASMOP::_data) {
   } else {
     throw "Unknown module child!";
   }

@@ -26,6 +26,7 @@ consteval STATUS loop(State &state) {
       continue;
     }
     case OP::_drop: {
+      break;
     }
     case OP::_local: {
       STATUS res = HandleLocal(state, _op);
@@ -104,6 +105,14 @@ consteval STATUS loop(State &state) {
       STATUS res = HandleEnd(state);
       if (res == STATUS::ERROR) {
         throw "END Call Handling Failed!";
+        return STATUS::ERROR;
+      }
+      break;
+    }
+    case OP::_loop: {
+      STATUS res = HandleLoop(state);
+      if (res == STATUS::ERROR) {
+        throw "Loop Call Handling Failed!";
         return STATUS::ERROR;
       }
       break;
@@ -199,7 +208,7 @@ inline consteval STATUS Run() {
     throw "Invalid return value from main!";
   }
 
-  if (returnValue.m_operandValue != 55) {
+  if (returnValue.m_operandValue != 8) {
     throw "Invalid return value from main!";
   }
   return STATUS::OK;

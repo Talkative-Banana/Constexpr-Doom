@@ -10,16 +10,17 @@ struct L2Cache {};
 struct Block {
   uint32_t m_blockStart{};
   uint32_t m_blockEnd{};
+  bool m_isLoop{false};
 };
 
 struct Function {
   std::string_view m_name;
   uint32_t m_typeIndex = 0;
 
-  std::array<ParamType, 16> m_params{};
+  std::array<ParamType, 32> m_params{};
   uint32_t m_paramCount = 0;
 
-  std::array<ParamType, 32> m_locals{};
+  std::array<ParamType, 256> m_locals{};
   uint32_t m_localCount = 0;
 
   std::array<Instr, 256> m_body{};
@@ -98,102 +99,10 @@ struct State {
 
 inline constexpr std::string_view program = R"(
 (module
-  (type (;0;) (func (param i32) (result i32)))
-  (type (;1;) (func (result i32)))
-  (type (;2;) (func (param i32 i32) (result i32)))
-  (func $fibbo_int_ (type 0) (param i32) (result i32)
-    (local i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32)
-    global.get $__stack_pointer
-    local.set 1
-    i32.const 16
-    local.set 2
-    local.get 1
-    local.get 2
-    i32.sub
-    local.set 3
-    local.get 3
-    global.set $__stack_pointer
-    local.get 3
-    local.get 0
-    i32.store offset=8
-    local.get 3
-    i32.load offset=8
-    local.set 4
-    i32.const 2
-    local.set 5
-    local.get 4
-    local.set 6
-    local.get 5
-    local.set 7
-    local.get 6
-    local.get 7
-    i32.le_s
-    local.set 8
-    i32.const 1
-    local.set 9
-    local.get 8
-    local.get 9
-    i32.and
-    local.set 10
-    block  ;; label = @1
-      block  ;; label = @2
-        local.get 10
-        i32.eqz
-        br_if 0 (;@2;)
-        i32.const 1
-        local.set 11
-        local.get 3
-        local.get 11
-        i32.store offset=12
-        br 1 (;@1;)
-      end
-      local.get 3
-      i32.load offset=8
-      local.set 12
-      i32.const 1
-      local.set 13
-      local.get 12
-      local.get 13
-      i32.sub
-      local.set 14
-      local.get 14
-      call $fibbo_int_
-      local.set 15
-      local.get 3
-      i32.load offset=8
-      local.set 16
-      i32.const 2
-      local.set 17
-      local.get 16
-      local.get 17
-      i32.sub
-      local.set 18
-      local.get 18
-      call $fibbo_int_
-      local.set 19
-      local.get 15
-      local.get 19
-      i32.add
-      local.set 20
-      local.get 3
-      local.get 20
-      i32.store offset=12
-    end
-    local.get 3
-    i32.load offset=12
-    local.set 21
-    i32.const 16
-    local.set 22
-    local.get 3
-    local.get 22
-    i32.add
-    local.set 23
-    local.get 23
-    global.set $__stack_pointer
-    local.get 21
-    return)
-  (func $__original_main (type 1) (result i32)
-    (local i32 i32 i32 i32 i32 i32 i32 i32 i32)
+  (type (;0;) (func (result i32)))
+  (type (;1;) (func (param i32 i32) (result i32)))
+  (func $__original_main (type 0) (result i32)
+    (local i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32)
     global.get $__stack_pointer
     local.set 0
     i32.const 16
@@ -202,35 +111,112 @@ inline constexpr std::string_view program = R"(
     local.get 1
     i32.sub
     local.set 2
-    local.get 2
-    global.set $__stack_pointer
     i32.const 0
     local.set 3
     local.get 2
     local.get 3
     i32.store offset=12
-    i32.const 10
+    i32.const 6
     local.set 4
+    local.get 2
     local.get 4
-    call $fibbo_int_
+    i32.store offset=8
+    i32.const 0
     local.set 5
     local.get 2
     local.get 5
-    i32.store offset=8
+    i32.store offset=4
+    block  ;; label = @1
+      loop  ;; label = @2
+        local.get 2
+        i32.load offset=8
+        local.set 6
+        i32.const 1
+        local.set 7
+        local.get 6
+        local.set 8
+        local.get 7
+        local.set 9
+        local.get 8
+        local.get 9
+        i32.ne
+        local.set 10
+        i32.const 1
+        local.set 11
+        local.get 10
+        local.get 11
+        i32.and
+        local.set 12
+        local.get 12
+        i32.eqz
+        br_if 1 (;@1;)
+        local.get 2
+        i32.load offset=8
+        local.set 13
+        i32.const 2
+        local.set 14
+        local.get 13
+        local.get 14
+        i32.rem_s
+        local.set 15
+        block  ;; label = @3
+          block  ;; label = @4
+            local.get 15
+            br_if 0 (;@4;)
+            local.get 2
+            i32.load offset=8
+            local.set 16
+            i32.const 2
+            local.set 17
+            local.get 16
+            local.get 17
+            i32.div_s
+            local.set 18
+            local.get 2
+            local.get 18
+            i32.store offset=8
+            br 1 (;@3;)
+          end
+          local.get 2
+          i32.load offset=8
+          local.set 19
+          i32.const 3
+          local.set 20
+          local.get 19
+          local.get 20
+          i32.mul
+          local.set 21
+          i32.const 1
+          local.set 22
+          local.get 21
+          local.get 22
+          i32.add
+          local.set 23
+          local.get 2
+          local.get 23
+          i32.store offset=8
+        end
+        local.get 2
+        i32.load offset=4
+        local.set 24
+        i32.const 1
+        local.set 25
+        local.get 24
+        local.get 25
+        i32.add
+        local.set 26
+        local.get 2
+        local.get 26
+        i32.store offset=4
+        br 0 (;@2;)
+      end
+    end
     local.get 2
-    i32.load offset=8
-    local.set 6
-    i32.const 16
-    local.set 7
-    local.get 2
-    local.get 7
-    i32.add
-    local.set 8
-    local.get 8
-    global.set $__stack_pointer
-    local.get 6
+    i32.load offset=4
+    local.set 27
+    local.get 27
     return)
-  (func $main (type 2) (param i32 i32) (result i32)
+  (func $main (type 1) (param i32 i32) (result i32)
     (local i32)
     call $__original_main
     local.set 2

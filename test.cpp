@@ -1,19 +1,12 @@
-int fact(int n) {
-  if (n <= 1)
-    return 1;
+const char *str = "hello";
 
-  return n * fact(n - 1);
-}
-
-int fibbo(int n) {
-  if (n <= 2) {
-    return 1;
-  }
-
-  return fibbo(n - 1) + fibbo(n - 2);
+int strlen_manual() {
+  int i = 0;
+  while (str[i] != 0)
+    i++;
+  return i;
 }
 
 int main() {
-  int r = fibbo(3);
-  return r;
+  return strlen_manual(); // expect 5
 }

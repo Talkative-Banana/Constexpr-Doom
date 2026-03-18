@@ -9,7 +9,16 @@ struct Span {
 };
 
 // ----- OP TYPES -----
-enum class WASMOP { _unknown, _func, _table, _type, _memory, _global, _export };
+enum class WASMOP {
+  _unknown,
+  _func,
+  _table,
+  _type,
+  _memory,
+  _global,
+  _export,
+  _data,
+};
 
 // ----- IDENTIFY FUNCTION -----
 constexpr WASMOP Identify(std::string_view block) {
@@ -25,6 +34,8 @@ constexpr WASMOP Identify(std::string_view block) {
     return WASMOP::_global;
   } else if (block.starts_with("(export")) {
     return WASMOP::_export;
+  } else if (block.starts_with("(data")) {
+    return WASMOP::_data;
   } else {
     return WASMOP::_unknown;
   }
@@ -139,13 +150,13 @@ enum class Member {
   _add,
   _sub,
   _mul,
-  _div_sx,
-  _rem_sx,
+  _div_s,
+  _rem_s,
   _and,
   _or,
   _xor,
   _shl,
-  _shr_sx,
+  _shr_s,
   _rotl,
   _rotr,
   _div,
@@ -172,6 +183,7 @@ enum class Member {
   _demote,
   _store,
   _load,
+  _load8_u,
 };
 
 enum class OperandType {
@@ -225,6 +237,9 @@ struct Instr {
     } else if (_op == "block") {
       m_op = OP::_block;
       return;
+    } else if (_op == "loop") {
+      m_op = OP::_loop;
+      return;
     } else if (_op == "br_if") {
       m_op = OP::_br_if;
     } else if (_op == "br") {
@@ -259,10 +274,24 @@ struct Instr {
       m_mem = Member::_load;
     } else if (_mem == "le_s") {
       m_mem = Member::_le_s;
+    } else if (_mem == "lt_s") {
+      m_mem = Member::_lt_s;
     } else if (_mem == "and") {
       m_mem = Member::_and;
     } else if (_mem == "eqz") {
       m_mem = Member::_eqz;
+    } else if (_mem == "rem_s") {
+      m_mem = Member::_rem_s;
+    } else if (_mem == "shl") {
+      m_mem = Member::_shl;
+    } else if (_mem == "div_s") {
+      m_mem = Member::_div_s;
+    } else if (_mem == "ne") {
+      m_mem = Member::_ne;
+    } else if (_mem == "shr_s") {
+      m_mem = Member::_shr_s;
+    } else if (_mem == "load8_u") {
+      m_mem = Member::_load8_u;
     } else {
       throw "Invalid Memeber Parsing";
     }
