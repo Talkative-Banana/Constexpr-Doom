@@ -3,7 +3,7 @@
 # ----------------------
 
 CXX := g++-12
-CXXFLAGS := -c -std=c++20 -O2 -Wall -Wextra -I. 
+CXXFLAGS := -c -std=c++20 -O2 -Wall -Wextra -I. -fconstexpr-ops-limit=2147483648 -fconstexpr-loop-limit=2147483647
 LDFLAGS := 
 
 TARGET := ctwr

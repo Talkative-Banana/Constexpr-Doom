@@ -1,7 +1,6 @@
-// test.c
-__attribute__((import_module("env"), import_name("print"))) void print(int x);
 
 int main() {
-  print(42);
+  float a = 12.2, b = 13.5;
+  float c = a + b;
   return 0;
 }

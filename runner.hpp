@@ -62,9 +62,17 @@ consteval STATUS loop(State &state) {
       break;
     }
     case OP::_i32: {
-      STATUS res = HandleI32(state, _op);
+      STATUS res = HandleI<int32_t>(state, _op);
       if (res == STATUS::ERROR) {
         throw "I32 Call Handling Failed!";
+        return STATUS::ERROR;
+      }
+      break;
+    }
+    case OP::_i64: {
+      STATUS res = HandleI<int64_t>(state, _op);
+      if (res == STATUS::ERROR) {
+        throw "I64 Call Handling Failed!";
         return STATUS::ERROR;
       }
       break;
@@ -189,11 +197,10 @@ inline consteval STATUS Run() {
         static_cast<uint8_t>((val >> (i * 8)) & 0xFF);
   }
 
-  Data zdata1{}, zdata2{};
-  zdata1.m_data.emplace<int32_t>(0);
-  zdata2.m_data.emplace<int32_t>(0);
-  op_stk.Push(zdata1);
-  op_stk.Push(zdata2);
+  Data zdata{};
+  zdata.m_data.emplace<int32_t>(0);
+  op_stk.Push(zdata);
+  op_stk.Push(zdata);
 
   STATUS setupCall = HandleCall(state, "$main");
   if (setupCall != STATUS::OK) {
@@ -214,7 +221,7 @@ inline consteval STATUS Run() {
 
   Data returnValue = state.m_opStack.Pop();
 
-  if (std::get<int32_t>(returnValue.m_data) != 8) {
+  if (std::get<int32_t>(returnValue.m_data) != 125) {
     throw "Invalid return value from main!";
   }
   return STATUS::OK;

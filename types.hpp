@@ -233,6 +233,12 @@ struct Instr {
       m_op = OP::_global;
     } else if (_op == "i32") {
       m_op = OP::_i32;
+    } else if (_op == "i64") {
+      m_op = OP::_i64;
+    } else if (_op == "f32") {
+      m_op = OP::_f32;
+    } else if (_op == "f64") {
+      m_op = OP::_f64;
     } else if (_op == "return") {
       m_op = OP::_return;
     } else if (_op == "call") {
@@ -285,6 +291,10 @@ struct Instr {
       m_mem = Member::_and;
     } else if (_mem == "eqz") {
       m_mem = Member::_eqz;
+    } else if (_mem == "eq") {
+      m_mem = Member::_eq;
+    } else if (_mem == "xor") {
+      m_mem = Member::_xor;
     } else if (_mem == "rem_s") {
       m_mem = Member::_rem_s;
     } else if (_mem == "shl") {
@@ -297,6 +307,8 @@ struct Instr {
       m_mem = Member::_shr_s;
     } else if (_mem == "load8_u") {
       m_mem = Member::_load8_u;
+    } else if (_mem == "gt_s") {
+      m_mem = Member::_gt_s;
     } else {
       throw "Invalid Memeber Parsing";
     }
