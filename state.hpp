@@ -59,20 +59,20 @@ struct Table {};
 struct Memory {};
 
 struct Global {
-  std::array<Instr, MAXGLOBALS> m_data{};
+  std::array<uint8_t, MAXGLOBALS> m_data{};
 };
 
 struct Export {};
 
 struct Stack {
 
-  constexpr void Push(const Instr &instr) {
+  constexpr void Push(const Data &data) {
     if (m_stackPointer == 0)
       throw "Stack overflow";
-    m_data[--m_stackPointer] = instr;
+    m_data[--m_stackPointer] = data;
   }
 
-  constexpr Instr Pop() {
+  constexpr Data Pop() {
     if (m_stackPointer == 66560)
       throw "Stack underflow";
     return m_data[m_stackPointer++];
@@ -81,7 +81,7 @@ struct Stack {
   uint64_t m_basePointer = 0;
   uint64_t m_stackPointer = 0;
   uint64_t m_framePointer = 0;
-  std::array<Instr, STACKSIZE> m_data{};
+  std::array<Data, STACKSIZE> m_data{};
 };
 
 struct Heap {};

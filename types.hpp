@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string_view>
 #include <type_traits>
+#include <variant>
 
 struct Span {
   uint32_t begin, end;
@@ -198,6 +199,10 @@ enum Trap { terminate };
 
 template <typename Expr, typename T1, typename T2> struct SELECT {
   using type = typename std::conditional<Expr::value, T1, T2>::type;
+};
+
+struct Data {
+  std::variant<int32_t, uint32_t, int64_t, uint64_t, float, double> m_data{};
 };
 
 struct Instr {

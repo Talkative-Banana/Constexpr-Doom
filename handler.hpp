@@ -23,23 +23,24 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   // Get the function pointer and return address from the stack if exists
   if (state.m_activeFunction != nullptr) {
     std::size_t hash = constexpr_hash(state.m_activeFunction->m_name);
-    int64_t h = static_cast<int64_t>(hash & 0x7fffffffffffffffULL);
-    Instr fPtr = Instr{OP::_i64, Member::_none, OperandType::_hash, "0", h};
+    Data fPtr;
+    fPtr.m_data = static_cast<int32_t>(hash % MAXFUNCTIONS);
     // Push function address to return to after function call
     stk.Push(fPtr);
   } else {
     // If there is no active function, we are calling the main function, so push
     // a 0 as the function pointer
-    Instr fPtr = Instr{OP::_i64, Member::_none, OperandType::_hash, "0", 0};
+    Data fPtr;
+    fPtr.m_data = int32_t{0};
     stk.Push(fPtr);
   }
 
-  Instr iPtr = Instr{OP::_i64, Member::_none, OperandType::_immediate, "0",
-                     static_cast<int64_t>(state.m_instrPointer + 1)};
+  Data iPtr, bPtr;
+  iPtr.m_data = static_cast<int32_t>(state.m_instrPointer + 1);
   // Push return address to recover it after function call
   stk.Push(iPtr);
-  Instr bPtr = Instr{OP::_i64, Member::_none, OperandType::_immediate, "0",
-                     static_cast<int64_t>(stk.m_basePointer)};
+
+  bPtr.m_data = static_cast<int32_t>(stk.m_basePointer);
   // Push the base ptr to recover it after function call
   stk.Push(bPtr);
 
@@ -49,12 +50,12 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   // get hash of the function name and use it to get the function type and
   // argument count
   size_t hash = constexpr_hash(funcName);
-  int64_t h = static_cast<int64_t>(hash & 0x7fffffffffffffffULL);
+  int64_t h = static_cast<int64_t>(hash % MAXFUNCTIONS);
   Function &f = state.m_functionTable.m_data[h % MAXFUNCTIONS];
 
   // Push the function arguments
   uint32_t paramCount = f.m_paramCount;
-  std::array<Instr, LOCALINSTRSIZE> args{};
+  std::array<Data, LOCALINSTRSIZE> args{};
 
   if (paramCount > LOCALINSTRSIZE) {
     throw "too many args";
@@ -65,56 +66,14 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   }
 
   for (uint32_t i = 0; i < paramCount; ++i) {
-    ParamType &param = f.m_params[i];
-    if (param == ParamType::_i32) {
-      Instr instr = args[i];
-      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_immediate, "0",
-                     instr.m_operandValue});
-    } else if (param == ParamType::_i64) {
-      Instr instr = args[i];
-      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_immediate, "0",
-                     instr.m_operandValue});
-    } else if (param == ParamType::_f32) {
-      Instr instr = args[i];
-      stk.Push(Instr{OP::_f32, Member::_none, OperandType::_immediate, "0",
-                     instr.m_operandValue});
-    } else if (param == ParamType::_f64) {
-      Instr instr = args[i];
-      stk.Push(Instr{OP::_f64, Member::_none, OperandType::_immediate, "0",
-                     instr.m_operandValue});
-    } else if (param == ParamType::_funcref) {
-      Instr instr = args[i];
-      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_address, "0",
-                     instr.m_operandValue});
-    } else if (param == ParamType::_externref) {
-      Instr instr = args[i];
-      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_address, "0",
-                     instr.m_operandValue});
-    } else {
-      throw "Unsupported parameter type";
-    }
+    stk.Push(args[i]);
   }
   // Args are already pushed by the caller, so we just need to push space for
   // local variables
   uint32_t localCount = f.m_localCount;
   // Push local variables
   for (uint32_t i = 0; i < localCount; i++) {
-    ParamType &local = f.m_locals[i];
-    if (local == ParamType::_i32) {
-      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", 0});
-    } else if (local == ParamType::_i64) {
-      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_immediate, "0", 0});
-    } else if (local == ParamType::_f32) {
-      stk.Push(Instr{OP::_f32, Member::_none, OperandType::_immediate, "0", 0});
-    } else if (local == ParamType::_f64) {
-      stk.Push(Instr{OP::_f64, Member::_none, OperandType::_immediate, "0", 0});
-    } else if (local == ParamType::_funcref) {
-      stk.Push(Instr{OP::_i32, Member::_none, OperandType::_address, "0", 0});
-    } else if (local == ParamType::_externref) {
-      stk.Push(Instr{OP::_i64, Member::_none, OperandType::_address, "0", 0});
-    } else {
-      throw "Unsupported local variable type";
-    }
+    stk.Push(Data{});
   }
 
   // Update the active Function and instrunction Pointer
@@ -133,12 +92,11 @@ consteval STATUS HandleLocal(State &state, const Instr &instr) {
   }
   uint64_t address = stk.m_basePointer - instr.m_operandValue - 1;
   if (instr.m_mem == Member::_get) {
-    Instr instr = Instr{OP::_i64, Member::_none, OperandType::_immediate, "0",
-                        stk.m_data[address].m_operandValue};
-    op_stk.Push(instr);
+    Data data = stk.m_data[address];
+    op_stk.Push(data);
   } else {
-    Instr instr = op_stk.Pop();
-    stk.m_data[address] = instr;
+    Data data = op_stk.Pop();
+    stk.m_data[address] = data;
   }
   state.m_instrPointer++;
   return STATUS::OK;
@@ -157,11 +115,21 @@ consteval STATUS HandleGlobal(State &state, const Instr &instr) {
 
   if (operand == "$__stack_pointer") {
     if (instr.m_mem == Member::_get) {
-      Instr instr = global.m_data[GLOBALSTACKPOINTERLOCATION];
-      op_stk.Push(instr);
+      Data newData{};
+      int32_t val{};
+      for (size_t i = 0; i < __SIZEOF_INT__; i++) {
+        val |= static_cast<int>(global.m_data[GLOBALSTACKPOINTERLOCATION + i])
+               << (i * 8);
+      }
+      newData.m_data = int32_t{val};
+      op_stk.Push(newData);
     } else {
-      Instr instr = op_stk.Pop();
-      global.m_data[GLOBALSTACKPOINTERLOCATION] = instr;
+      Data data = op_stk.Pop();
+      int32_t val = std::get<int32_t>(data.m_data);
+      for (size_t i = 0; i < 4; i++) {
+        global.m_data[GLOBALSTACKPOINTERLOCATION + i] =
+            static_cast<uint8_t>((val >> (i * 8)) & 0xFF);
+      }
     }
   }
   state.m_instrPointer++;
@@ -173,26 +141,26 @@ consteval STATUS HandleReturn(State &state) {
   Stack &stk = state.m_stack;
   stk.m_stackPointer = stk.m_basePointer;
   // Pop the base pointer and return address
-  Instr bPtr = stk.Pop();
-  Instr iPtr = stk.Pop();
-  Instr fPtr = stk.Pop();
+  Data bPtr = stk.Pop();
+  Data iPtr = stk.Pop();
+  Data fPtr = stk.Pop();
   // Update the instruction pointer and base pointer to return to the caller
-  stk.m_basePointer = bPtr.m_operandValue;
-  state.m_instrPointer = iPtr.m_operandValue;
+  stk.m_basePointer = std::get<int32_t>(bPtr.m_data);
+  state.m_instrPointer = std::get<int32_t>(iPtr.m_data);
   // Restore the active function
-  if (fPtr.m_operandValue == 0) {
+  if (std::get<int32_t>(fPtr.m_data) == 0) {
     // If the function pointer is 0, it means we are returning from the main
     // function
     state.m_activeFunction = nullptr;
     return STATUS::OK;
   }
 
-  if (fPtr.m_operandValue < 0) {
+  if (std::get<int32_t>(fPtr.m_data) < 0) {
     throw "fPtr corrupted";
   }
 
-  Function &f =
-      state.m_functionTable.m_data[fPtr.m_operandValue % MAXFUNCTIONS];
+  Function &f = state.m_functionTable
+                    .m_data[std::get<int32_t>(fPtr.m_data) % MAXFUNCTIONS];
   state.m_activeFunction = &f;
   return STATUS::OK;
 }
@@ -247,10 +215,10 @@ consteval STATUS HandleBranchIf(State &state, Instr &instr) {
   Function *f = state.m_activeFunction;
 
   Stack &opStack = state.m_opStack;
-  Instr topInstr = opStack.Pop();
+  Data topInstr = opStack.Pop();
 
   // Check if we want to take branch
-  if (topInstr.m_operandValue) {
+  if (std::get<int32_t>(topInstr.m_data)) {
 
     // Number of blocks to remove
     int blocksToRemove = instr.m_operandValue + 1;
@@ -313,68 +281,96 @@ consteval STATUS HandleI32(State &state, const Instr &instr) {
   Stack &op_stk = state.m_opStack;
   Global &global = state.m_global;
   if (instr.m_mem == Member::_const) {
-    int64_t value = instr.m_operandValue;
-    op_stk.Push(
-        Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", value});
+    Data data;
+    data.m_data = static_cast<int32_t>(instr.m_operandValue);
+    op_stk.Push(data);
     state.m_instrPointer++;
     return STATUS::OK;
   } else if (isArithmetic(instr)) {
-    Instr b = op_stk.Pop();
-    Instr a{};
+    Data b = op_stk.Pop();
+    Data a{};
     if (!isSingleOperand(instr)) {
-      a = op_stk.Pop();
+      a.m_data = op_stk.Pop().m_data;
     }
-    int64_t result;
+    int32_t result;
     if (instr.m_mem == Member::_add) {
-      result = a.m_operandValue + b.m_operandValue;
+      result = std::get<int32_t>(a.m_data) + std::get<int32_t>(b.m_data);
     } else if (instr.m_mem == Member::_sub) {
-      result = a.m_operandValue - b.m_operandValue;
+      result = std::get<int32_t>(a.m_data) - std::get<int32_t>(b.m_data);
     } else if (instr.m_mem == Member::_mul) {
-      result = a.m_operandValue * b.m_operandValue;
+      result = std::get<int32_t>(a.m_data) * std::get<int32_t>(b.m_data);
     } else if (instr.m_mem == Member::_le_s) {
-      result = a.m_operandValue <= b.m_operandValue;
+      result = std::get<int32_t>(a.m_data) <= std::get<int32_t>(b.m_data);
     } else if (instr.m_mem == Member::_and) {
-      result = a.m_operandValue & b.m_operandValue;
+      result = std::get<int32_t>(a.m_data) & std::get<int32_t>(b.m_data);
     } else if (instr.m_mem == Member::_eqz) {
-      result = (b.m_operandValue == 0) ? 1 : 0;
+      result = (std::get<int32_t>(b.m_data) == 0) ? 1 : 0;
     } else if (instr.m_mem == Member::_lt_s) {
-      result = a.m_operandValue < b.m_operandValue;
+      result = std::get<int32_t>(a.m_data) < std::get<int32_t>(b.m_data);
     } else if (instr.m_mem == Member::_rem_s) {
-      result = a.m_operandValue % b.m_operandValue;
+      result = std::get<int32_t>(a.m_data) % std::get<int32_t>(b.m_data);
     } else if (instr.m_mem == Member::_shl) {
-      result = a.m_operandValue << b.m_operandValue;
+      result = std::get<int32_t>(a.m_data) << std::get<int32_t>(b.m_data);
     } else if (instr.m_mem == Member::_div_s) {
-      result = a.m_operandValue / b.m_operandValue;
+      result = std::get<int32_t>(a.m_data) / std::get<int32_t>(b.m_data);
     } else if (instr.m_mem == Member::_ne) {
-      result = a.m_operandValue != b.m_operandValue;
+      result = std::get<int32_t>(a.m_data) != std::get<int32_t>(b.m_data);
     } else if (instr.m_mem == Member::_shr_s) {
-      result = a.m_operandValue >> b.m_operandValue;
+      result = std::get<int32_t>(a.m_data) >> std::get<int32_t>(b.m_data);
     } else {
       throw "Unsupported I32 operation";
     }
-    op_stk.Push(
-        Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", result});
+    Data data;
+    data.m_data = static_cast<int32_t>(result);
+    op_stk.Push(data);
     state.m_instrPointer++;
     return STATUS::OK;
   } else if ((instr.m_mem == Member::_load) ||
              (instr.m_mem == Member::_load8_u) ||
              (instr.m_mem == Member::_store)) {
 
-    uint64_t offset = instr.m_operandValue;
-    if (instr.m_mem == Member::_load || (instr.m_mem == Member::_load8_u)) {
-      Instr base = op_stk.Pop();
-      if (base.m_operandValue + offset >= 66560) {
+    int32_t offset = instr.m_operandValue;
+    if (instr.m_mem == Member::_load) {
+      Data base = op_stk.Pop();
+      if (std::get<int32_t>(base.m_data) + offset >= 66560) {
         throw "Invalid memory access in i32.load";
       }
-      Instr instr = global.m_data[base.m_operandValue + offset];
-      op_stk.Push(instr);
-    } else {
-      Instr val = op_stk.Pop();
-      Instr base = op_stk.Pop();
-      if (base.m_operandValue + offset >= 66560) {
+      int32_t val{};
+      for (size_t i = 0; i < __SIZEOF_INT__; i++) {
+        val |= static_cast<int>(
+                   global.m_data[std::get<int32_t>(base.m_data) + offset + i])
+               << (i * 8);
+      }
+
+      Data data;
+      data.m_data = static_cast<int32_t>(val);
+      op_stk.Push(data);
+    } else if (instr.m_mem == Member::_load8_u) {
+      Data base = op_stk.Pop();
+      if (std::get<int32_t>(base.m_data) + offset >= 66560) {
+        throw "Invalid memory access in i32.load";
+      }
+      int8_t val{};
+      val |= static_cast<int>(
+          global.m_data[std::get<int32_t>(base.m_data) + offset]);
+      Data data;
+      data.m_data = static_cast<int32_t>(val);
+      op_stk.Push(data);
+    } else if (instr.m_mem == Member::_store) {
+      Data val = op_stk.Pop();
+      Data base = op_stk.Pop();
+      if (std::get<int32_t>(base.m_data) + offset >= 66560) {
         throw "Invalid memory access in i32.store";
       }
-      global.m_data[base.m_operandValue + offset] = val;
+      if (instr.m_op == OP::_i32) {
+        for (size_t i = 0; i < 4; i++) {
+          global.m_data[std::get<int32_t>(base.m_data) + offset + i] =
+              static_cast<uint8_t>((std::get<int32_t>(val.m_data) >> (i * 8)) &
+                                   0xFF);
+        }
+      } else {
+        throw "Global storage type not supported yet.";
+      }
     }
     state.m_instrPointer++;
     return STATUS::OK;

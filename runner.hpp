@@ -23,9 +23,13 @@ consteval STATUS loop(State &state) {
 
     switch (_op.m_op) {
     case OP::_nop: {
+      state.m_opStack.Pop();
+      state.m_instrPointer++;
       continue;
     }
     case OP::_drop: {
+      state.m_opStack.Pop();
+      state.m_instrPointer++;
       break;
     }
     case OP::_local: {
@@ -178,13 +182,18 @@ inline consteval STATUS Run() {
   op_stk.m_stackPointer = 66560;
 
   // Initialize the global variable $__stack_pointer to the initial stack
-  // pointer value
-  Instr instr =
-      Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", 66560};
-  state.m_global.m_data[GLOBALSTACKPOINTERLOCATION] = instr;
+  // pointer value;
+  int32_t val = 66560;
+  for (size_t i = 0; i < 4; i++) {
+    state.m_global.m_data[GLOBALSTACKPOINTERLOCATION + i] =
+        static_cast<uint8_t>((val >> (i * 8)) & 0xFF);
+  }
 
-  op_stk.Push(Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", 0});
-  op_stk.Push(Instr{OP::_i32, Member::_none, OperandType::_immediate, "0", 0});
+  Data zdata1{}, zdata2{};
+  zdata1.m_data.emplace<int32_t>(0);
+  zdata2.m_data.emplace<int32_t>(0);
+  op_stk.Push(zdata1);
+  op_stk.Push(zdata2);
 
   STATUS setupCall = HandleCall(state, "$main");
   if (setupCall != STATUS::OK) {
@@ -203,12 +212,9 @@ inline consteval STATUS Run() {
     throw "No return value from main!";
   }
 
-  Instr returnValue = state.m_opStack.Pop();
-  if (returnValue.m_type != OperandType::_immediate) {
-    throw "Invalid return value from main!";
-  }
+  Data returnValue = state.m_opStack.Pop();
 
-  if (returnValue.m_operandValue != 8) {
+  if (std::get<int32_t>(returnValue.m_data) != 8) {
     throw "Invalid return value from main!";
   }
   return STATUS::OK;

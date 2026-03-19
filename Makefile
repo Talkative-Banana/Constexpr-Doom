@@ -2,7 +2,7 @@
 # Makefile for ctwr
 # ----------------------
 
-CXX := g++
+CXX := g++-12
 CXXFLAGS := -c -std=c++20 -O2 -Wall -Wextra -I. 
 LDFLAGS := 
 

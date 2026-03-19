@@ -1,12 +1,7 @@
-const char *str = "hello";
-
-int strlen_manual() {
-  int i = 0;
-  while (str[i] != 0)
-    i++;
-  return i;
-}
+// test.c
+__attribute__((import_module("env"), import_name("print"))) void print(int x);
 
 int main() {
-  return strlen_manual(); // expect 5
+  print(42);
+  return 0;
 }
