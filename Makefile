@@ -7,7 +7,7 @@ CXXFLAGS := -c -std=c++20 -O2 -Wall -Wextra -I. -fconstexpr-ops-limit=2147483648
 LDFLAGS := 
 
 TARGET := ctwr
-SRC := main.cpp parser.hpp state.hpp types.hpp constants.hpp
+SRC := main.cpp parser.hpp state.hpp types.hpp constants.hpp handler.hpp runner.hpp program.hpp
 OBJ := main.o
 
 # Default target
@@ -18,7 +18,7 @@ $(TARGET): $(OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Compile main.cpp to object
-main.o: main.cpp parser.hpp state.hpp types.hpp constants.hpp handler.hpp runner.hpp
+main.o: main.cpp parser.hpp state.hpp types.hpp constants.hpp handler.hpp runner.hpp program.hpp
 	$(CXX) $(CXXFLAGS) -c main.cpp -o main.o
 
 # Clean object files and executable

@@ -5,6 +5,7 @@
 #include "state.hpp"
 #include "types.hpp"
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <string_view>
 
@@ -79,6 +80,10 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
       data.m_data = int32_t{};
     } else if (pt == ParamType::_i64) {
       data.m_data = int64_t{};
+    } else if (pt == ParamType::_f32) {
+      data.m_data = float{};
+    } else if (pt == ParamType::_f64) {
+      data.m_data = double{};
     } else {
       throw "Unhandled param type";
     }
@@ -281,11 +286,29 @@ consteval bool isArithmetic(const Instr &instr) {
          instr.m_mem == Member::_shl || instr.m_mem == Member::_div_s ||
          instr.m_mem == Member::_ne || instr.m_mem == Member::_shr_s ||
          instr.m_mem == Member::_gt_s || instr.m_mem == Member::_eq ||
-         instr.m_mem == Member::_xor;
+         instr.m_mem == Member::_xor || instr.m_mem == Member::_trunc_f32_s ||
+         instr.m_mem == Member::_trunc_f64_s;
+}
+
+consteval bool isArithmeticDecimal(const Instr &instr) {
+  return instr.m_mem == Member::_add || instr.m_mem == Member::_sub ||
+         instr.m_mem == Member::_mul || instr.m_mem == Member::_eqz ||
+         instr.m_mem == Member::_ne || instr.m_mem == Member::_eq ||
+         instr.m_mem == Member::_abs || instr.m_mem == Member::_lt ||
+         instr.m_mem == Member::_convert_i32_s ||
+         instr.m_mem == Member::_convert_i64_s ||
+         instr.m_mem == Member::_promote_f32 ||
+         instr.m_mem == Member::_demote_f64;
 }
 
 consteval bool isSingleOperand(const Instr &instr) {
-  return instr.m_mem == Member::_eqz;
+  return instr.m_mem == Member::_eqz || instr.m_mem == Member::_abs ||
+         instr.m_mem == Member::_trunc_f32_s ||
+         instr.m_mem == Member::_trunc_f64_s ||
+         instr.m_mem == Member::_convert_i32_s ||
+         instr.m_mem == Member::_convert_i64_s ||
+         instr.m_mem == Member::_promote_f32 ||
+         instr.m_mem == Member::_demote_f64;
 }
 
 template <typename T1>
@@ -335,6 +358,10 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
       result = std::get<T1>(a.m_data) == std::get<T1>(b.m_data);
     } else if (instr.m_mem == Member::_xor) {
       result = std::get<T1>(a.m_data) ^ std::get<T1>(b.m_data);
+    } else if (instr.m_mem == Member::_trunc_f32_s) {
+      result = static_cast<T1>(std::get<float>(b.m_data));
+    } else if (instr.m_mem == Member::_trunc_f64_s) {
+      result = static_cast<T1>(std::get<double>(b.m_data));
     } else {
       throw "Unsupported I32 operation";
     }
@@ -389,6 +416,111 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
     state.m_instrPointer++;
     return STATUS::OK;
   } else {
-    throw "Unsupported I32 member";
+    throw "Unsupported I member";
+  }
+}
+
+template <typename T1>
+consteval STATUS HandleF(State &state, const Instr &instr) {
+  Stack &op_stk = state.m_opStack;
+  Global &global = state.m_global;
+  if (instr.m_mem == Member::_const) {
+    Data data;
+    data.m_data = static_cast<T1>(instr.m_operandValueDecimal);
+    op_stk.Push(data);
+    state.m_instrPointer++;
+    return STATUS::OK;
+  } else if (isArithmeticDecimal(instr)) {
+    Data b = op_stk.Pop();
+    Data a{};
+    if (!isSingleOperand(instr)) {
+      a.m_data = op_stk.Pop().m_data;
+    }
+    T1 result;
+    bool isAssert = false;
+    if (instr.m_mem == Member::_add) {
+      result = std::get<T1>(a.m_data) + std::get<T1>(b.m_data);
+    } else if (instr.m_mem == Member::_sub) {
+      result = std::get<T1>(a.m_data) - std::get<T1>(b.m_data);
+    } else if (instr.m_mem == Member::_mul) {
+      result = std::get<T1>(a.m_data) * std::get<T1>(b.m_data);
+    } else if (instr.m_mem == Member::_eqz) {
+      result = (std::get<T1>(b.m_data) == 0) ? 1 : 0;
+      isAssert = true;
+    } else if (instr.m_mem == Member::_ne) {
+      result = std::get<T1>(a.m_data) != std::get<T1>(b.m_data);
+      isAssert = true;
+    } else if (instr.m_mem == Member::_eq) {
+      result = std::get<T1>(a.m_data) == std::get<T1>(b.m_data);
+      isAssert = true;
+    } else if (instr.m_mem == Member::_abs) {
+      result = std::get<T1>(b.m_data) >= 0 ? std::get<T1>(b.m_data)
+                                           : -std::get<T1>(b.m_data);
+    } else if (instr.m_mem == Member::_lt) {
+      result = std::get<T1>(a.m_data) < std::get<T1>(b.m_data);
+      isAssert = true;
+    } else if (instr.m_mem == Member::_convert_i32_s) {
+      result = static_cast<T1>(std::get<int32_t>(b.m_data));
+    } else if (instr.m_mem == Member::_convert_i64_s) {
+      result = static_cast<T1>(std::get<int64_t>(b.m_data));
+    } else if (instr.m_mem == Member::_promote_f32) {
+      result = static_cast<T1>(std::get<float>(b.m_data));
+    } else if (instr.m_mem == Member::_demote_f64) {
+      result = static_cast<T1>(std::get<double>(b.m_data));
+    } else {
+      throw "Unsupported F32 operation";
+    }
+    Data data;
+    if (isAssert) {
+      data.m_data = static_cast<int32_t>(result);
+    } else {
+      data.m_data = static_cast<T1>(result);
+    }
+    op_stk.Push(data);
+    state.m_instrPointer++;
+    return STATUS::OK;
+  } else if ((instr.m_mem == Member::_load) ||
+             (instr.m_mem == Member::_store)) {
+
+    int32_t offset = instr.m_operandValue;
+    if (instr.m_mem == Member::_load) {
+      Data base = op_stk.Pop();
+      int32_t addr = std::get<int32_t>(base.m_data);
+      // Address are always 32 bit
+      if (addr + offset >= 66560) {
+        throw "Invalid memory access in fxx.load";
+      }
+
+      using RawT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
+      RawT raw{};
+      for (size_t i = 0; i < sizeof(T1); i++)
+        raw |= static_cast<RawT>(global.m_data[addr + offset + i]) << (i * 8);
+
+      T1 val = std::bit_cast<T1>(raw); // constexpr safe
+
+      Data data;
+      data.m_data = static_cast<T1>(val);
+      op_stk.Push(data);
+    } else if (instr.m_mem == Member::_store) {
+      Data val = op_stk.Pop();
+      Data base = op_stk.Pop();
+      int32_t addr = std::get<int32_t>(base.m_data);
+      if (addr + offset >= 66560) {
+        throw "Invalid memory access in fxx.store";
+      }
+
+      using RawT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
+      T1 f = std::get<T1>(val.m_data);
+      RawT raw = std::bit_cast<RawT>(f); // constexpr safe
+
+      for (size_t i = 0; i < sizeof(T1); i++) {
+        global.m_data[addr + offset + i] =
+            static_cast<uint8_t>((raw >> (i * 8)) & 0xFF);
+      }
+    }
+    state.m_instrPointer++;
+    return STATUS::OK;
+  } else {
+    throw "Unsupported F member";
   }
 }

@@ -77,6 +77,22 @@ consteval STATUS loop(State &state) {
       }
       break;
     }
+    case OP::_f32: {
+      STATUS res = HandleF<float>(state, _op);
+      if (res == STATUS::ERROR) {
+        throw "F32 Call Handling Failed!";
+        return STATUS::ERROR;
+      }
+      break;
+    }
+    case OP::_f64: {
+      STATUS res = HandleF<double>(state, _op);
+      if (res == STATUS::ERROR) {
+        throw "F64 Call Handling Failed!";
+        return STATUS::ERROR;
+      }
+      break;
+    }
     case OP::_return: {
       STATUS res = HandleReturn(state);
       if (res == STATUS::ERROR) {
@@ -221,7 +237,7 @@ inline consteval STATUS Run() {
 
   Data returnValue = state.m_opStack.Pop();
 
-  if (std::get<int32_t>(returnValue.m_data) != 125) {
+  if (std::get<int32_t>(returnValue.m_data) != 12) {
     throw "Invalid return value from main!";
   }
   return STATUS::OK;

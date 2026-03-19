@@ -1,5 +1,5 @@
 #pragma once
-#include "program.h"
+#include "program.hpp"
 #include "types.hpp"
 #include <array>
 #include <string_view>

@@ -180,11 +180,16 @@ enum class Member {
   _reinterpret,
   _trunc_sx,
   _trunc_sat_sx,
-  _promote,
+  _promote_f32,
+  _demote_f64,
   _demote,
   _store,
   _load,
   _load8_u,
+  _trunc_f32_s,
+  _trunc_f64_s,
+  _convert_i32_s,
+  _convert_i64_s,
 };
 
 enum class OperandType {
@@ -211,12 +216,13 @@ struct Instr {
   OperandType m_type{};
   std::string_view m_operand{};
   int64_t m_operandValue{};
+  double m_operandValueDecimal{};
 
   constexpr Instr() = default;
   constexpr Instr(OP op, Member mem, OperandType type, std::string_view operand,
                   int64_t operandValue = 0)
       : m_op(op), m_mem(mem), m_type(type), m_operand(operand),
-        m_operandValue(operandValue) {}
+        m_operandValue(operandValue), m_operandValueDecimal(0.0) {}
   constexpr Instr(std::string_view op, std::string_view operand)
       : m_operand(operand) {
     size_t pos = op.find(".");
@@ -309,11 +315,31 @@ struct Instr {
       m_mem = Member::_load8_u;
     } else if (_mem == "gt_s") {
       m_mem = Member::_gt_s;
+    } else if (_mem == "abs") {
+      m_mem = Member::_abs;
+    } else if (_mem == "lt") {
+      m_mem = Member::_lt;
+    } else if (_mem == "trunc_f32_s") {
+      m_mem = Member::_trunc_f32_s;
+    } else if (_mem == "trunc_f64_s") {
+      m_mem = Member::_trunc_f64_s;
+    } else if (_mem == "convert_i32_s") {
+      m_mem = Member::_convert_i32_s;
+    } else if (_mem == "convert_i64_s") {
+      m_mem = Member::_convert_i64_s;
+    } else if (_mem == "promote_f32") {
+      m_mem = Member::_promote_f32;
+    } else if (_mem == "demote_f64") {
+      m_mem = Member::_demote_f64;
     } else {
       throw "Invalid Memeber Parsing";
     }
 
-    if (m_op == OP::_local || (m_op == OP::_i32 && m_mem == Member::_const)) {
+    bool isInt = (m_op == OP::_i32 || m_op == OP::_i64);
+    bool isDec = (m_op == OP::_f32 || m_op == OP::_f64);
+    bool isIImm = (isInt && m_mem == Member::_const);
+    bool isDImm = (isDec && m_mem == Member::_const);
+    if (isIImm || m_op == OP::_local) {
       // Parse the operand as an immediate value for local and global
       // instructions
       int64_t value = 0;
@@ -335,6 +361,77 @@ struct Instr {
       } else {
         m_operandValue = value;
       }
+    } else if (isDImm) {
+      // Parse the operand as an immediate value for local and global
+      // instructions
+      std::string_view s = operand;
+      // strip (;...;) comment
+      size_t commentPos = s.find("(;");
+      if (commentPos != std::string_view::npos) {
+        s = s.substr(0, commentPos);
+        while (!s.empty() && s.back() == ' ')
+          s.remove_suffix(1);
+      }
+
+      operand = s;
+      bool neg = false;
+      if (!operand.empty() && operand[0] == '-') {
+        neg = true;
+        operand.remove_prefix(1);
+      }
+      // skip "0x"
+      operand.remove_prefix(2);
+
+      double mantissa = 0.0f;
+      double frac = 1.0f;
+      bool hasDot = false;
+      size_t i = 0;
+
+      // parse hex mantissa
+      for (; i < operand.size(); i++) {
+        char c = operand[i];
+        if (c == 'p' || c == 'P')
+          break;
+        if (c == '.') {
+          hasDot = true;
+          continue;
+        }
+        int digit = (c >= '0' && c <= '9')   ? c - '0'
+                    : (c >= 'a' && c <= 'f') ? c - 'a' + 10
+                                             : c - 'A' + 10;
+        if (hasDot) {
+          frac /= 16.0f;
+          mantissa += digit * frac;
+        } else {
+          mantissa = mantissa * 16.0f + digit;
+        }
+      }
+
+      // parse exponent after 'p'
+      i++; // skip 'p'
+      int expSign = 1;
+      if (operand[i] == '+')
+        i++;
+      else if (operand[i] == '-') {
+        expSign = -1;
+        i++;
+      }
+
+      int exp = 0;
+      for (; i < operand.size(); i++)
+        exp = exp * 10 + (operand[i] - '0');
+      exp *= expSign;
+
+      // apply exponent (2^exp)
+      double result = mantissa;
+      if (exp > 0)
+        for (int j = 0; j < exp; j++)
+          result *= 2.0f;
+      else
+        for (int j = 0; j < -exp; j++)
+          result /= 2.0f;
+
+      m_operandValueDecimal = neg ? -result : result;
     } else if (m_operand.empty()) {
       // Set the operand type
       m_type = OperandType::_none;
