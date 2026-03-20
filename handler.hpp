@@ -101,10 +101,11 @@ consteval STATUS HandleLocal(State &state, const Instr &instr) {
   Stack &op_stk = state.m_opStack;
 
   // Get and Set local variables using the operand as the offset from the base
-  if (static_cast<int64_t>(stk.m_basePointer) < instr.m_operandValue + 1) {
+  if (static_cast<int64_t>(stk.m_basePointer) + instr.m_operandValue + 1 >=
+      STACKSIZE) {
     throw "Invalid Address used in local.get";
   }
-  uint64_t address = stk.m_basePointer - instr.m_operandValue - 1;
+  uint64_t address = stk.m_basePointer + instr.m_operandValue + 1;
   if (instr.m_mem == Member::_get) {
     Data data = stk.m_data[address];
     op_stk.Push(data);
@@ -127,24 +128,16 @@ consteval STATUS HandleGlobal(State &state, const Instr &instr) {
     throw "Global instructions must have an operand";
   }
 
-  if (operand == "$__stack_pointer") {
-    if (instr.m_mem == Member::_get) {
-      Data newData{};
-      int32_t val{};
-      for (size_t i = 0; i < __SIZEOF_INT__; i++) {
-        val |= static_cast<int>(global.m_data[GLOBALSTACKPOINTERLOCATION + i])
-               << (i * 8);
-      }
-      newData.m_data = int32_t{val};
-      op_stk.Push(newData);
-    } else {
-      Data data = op_stk.Pop();
-      int32_t val = std::get<int32_t>(data.m_data);
-      for (size_t i = 0; i < __SIZEOF_INT__; i++) {
-        global.m_data[GLOBALSTACKPOINTERLOCATION + i] =
-            static_cast<uint8_t>((val >> (i * 8)) & 0xFF);
-      }
-    }
+  // get hash of the function name and use it to get the function type and
+  // argument count
+  size_t hash = constexpr_hash(operand);
+  int64_t h = static_cast<int64_t>(hash % GLOBALSIZE);
+  if (instr.m_mem == Member::_get) {
+    Data newData = global.m_data[h];
+    op_stk.Push(newData);
+  } else {
+    Data data = op_stk.Pop();
+    global.m_data[h] = data;
   }
   state.m_instrPointer++;
   return STATUS::OK;
@@ -314,7 +307,7 @@ consteval bool isSingleOperand(const Instr &instr) {
 template <typename T1>
 consteval STATUS HandleI(State &state, const Instr &instr) {
   Stack &op_stk = state.m_opStack;
-  Global &global = state.m_global;
+  Memory &memory = state.m_memory;
   if (instr.m_mem == Member::_const) {
     Data data;
     data.m_data = static_cast<T1>(instr.m_operandValue);
@@ -379,12 +372,12 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
       Data base = op_stk.Pop();
       int32_t addr = std::get<int32_t>(base.m_data);
       // Address are always 32 bit
-      if (addr + offset >= 66560) {
+      if (addr + offset >= MEMORYSIZE) {
         throw "Invalid memory access in ixx.load";
       }
       T1 val{};
       for (size_t i = 0; i < sizeof(T1); i++) {
-        val |= static_cast<T1>(global.m_data[addr + offset + i]) << (i * 8);
+        val |= static_cast<T1>(memory.m_data[addr + offset + i]) << (i * 8);
       }
 
       Data data;
@@ -392,12 +385,12 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
       op_stk.Push(data);
     } else if (instr.m_mem == Member::_load8_u) {
       Data base = op_stk.Pop();
-      if (std::get<T1>(base.m_data) + offset >= 66560) {
+      if (std::get<T1>(base.m_data) + offset >= MEMORYSIZE) {
         throw "Invalid memory access in i32.load";
       }
       int8_t val{};
       val |=
-          static_cast<int>(global.m_data[std::get<T1>(base.m_data) + offset]);
+          static_cast<int>(memory.m_data[std::get<T1>(base.m_data) + offset]);
       Data data;
       data.m_data = static_cast<T1>(val);
       op_stk.Push(data);
@@ -405,11 +398,11 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
       Data val = op_stk.Pop();
       Data base = op_stk.Pop();
       int32_t addr = std::get<int32_t>(base.m_data);
-      if (addr + offset >= 66560) {
+      if (addr + offset >= MEMORYSIZE) {
         throw "Invalid memory access in ixx.store";
       }
       for (size_t i = 0; i < sizeof(T1); i++) {
-        global.m_data[addr + offset + i] =
+        memory.m_data[addr + offset + i] =
             static_cast<uint8_t>((std::get<T1>(val.m_data) >> (i * 8)) & 0xFF);
       }
     }
@@ -423,7 +416,7 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
 template <typename T1>
 consteval STATUS HandleF(State &state, const Instr &instr) {
   Stack &op_stk = state.m_opStack;
-  Global &global = state.m_global;
+  Memory &memory = state.m_memory;
   if (instr.m_mem == Member::_const) {
     Data data;
     data.m_data = static_cast<T1>(instr.m_operandValueDecimal);
@@ -487,14 +480,14 @@ consteval STATUS HandleF(State &state, const Instr &instr) {
       Data base = op_stk.Pop();
       int32_t addr = std::get<int32_t>(base.m_data);
       // Address are always 32 bit
-      if (addr + offset >= 66560) {
+      if (addr + offset >= MEMORYSIZE) {
         throw "Invalid memory access in fxx.load";
       }
 
       using RawT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
       RawT raw{};
       for (size_t i = 0; i < sizeof(T1); i++)
-        raw |= static_cast<RawT>(global.m_data[addr + offset + i]) << (i * 8);
+        raw |= static_cast<RawT>(memory.m_data[addr + offset + i]) << (i * 8);
 
       T1 val = std::bit_cast<T1>(raw); // constexpr safe
 
@@ -505,7 +498,7 @@ consteval STATUS HandleF(State &state, const Instr &instr) {
       Data val = op_stk.Pop();
       Data base = op_stk.Pop();
       int32_t addr = std::get<int32_t>(base.m_data);
-      if (addr + offset >= 66560) {
+      if (addr + offset >= MEMORYSIZE) {
         throw "Invalid memory access in fxx.store";
       }
 
@@ -514,7 +507,7 @@ consteval STATUS HandleF(State &state, const Instr &instr) {
       RawT raw = std::bit_cast<RawT>(f); // constexpr safe
 
       for (size_t i = 0; i < sizeof(T1); i++) {
-        global.m_data[addr + offset + i] =
+        memory.m_data[addr + offset + i] =
             static_cast<uint8_t>((raw >> (i * 8)) & 0xFF);
       }
     }

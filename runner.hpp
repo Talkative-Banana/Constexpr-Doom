@@ -195,25 +195,10 @@ inline consteval STATUS Run() {
     }
   }
 
-  // End of memory (64KB) - STACKSIZE (8KB)
-  // TODO: Remove hard coded initalisaiton
-  Stack &stk = state.m_stack;
-  stk.m_basePointer = 66560;
-  stk.m_stackPointer = 66560;
-
   Stack &op_stk = state.m_opStack;
-  op_stk.m_basePointer = 66560;
-  op_stk.m_stackPointer = 66560;
-
-  // Initialize the global variable $__stack_pointer to the initial stack
-  // pointer value;
-  int32_t val = 66560;
-  for (size_t i = 0; i < 4; i++) {
-    state.m_global.m_data[GLOBALSTACKPOINTERLOCATION + i] =
-        static_cast<uint8_t>((val >> (i * 8)) & 0xFF);
-  }
-
   Data zdata{};
+  
+  // Parameters for added main 
   zdata.m_data.emplace<int32_t>(0);
   op_stk.Push(zdata);
   op_stk.Push(zdata);
@@ -231,13 +216,13 @@ inline consteval STATUS Run() {
   }
 
   // 66563
-  if (state.m_opStack.m_stackPointer != 66559) {
+  if (state.m_opStack.m_stackPointer != state.m_opStack.m_floorPointer + 1) {
     throw "No return value from main!";
   }
 
   Data returnValue = state.m_opStack.Pop();
 
-  if (std::get<int32_t>(returnValue.m_data) != 12) {
+  if (std::get<int32_t>(returnValue.m_data) != 13) {
     throw "Invalid return value from main!";
   }
   return STATUS::OK;

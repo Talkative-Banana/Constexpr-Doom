@@ -57,31 +57,35 @@ struct Type {};
 
 struct Table {};
 
-struct Memory {};
+struct Memory {
+  std::array<uint8_t, MEMORYSIZE> m_data{};
+};
 
 struct Global {
-  std::array<uint8_t, MAXGLOBALS> m_data{};
+  std::array<Data, GLOBALSIZE> m_data{};
 };
 
 struct Export {};
 
 struct Stack {
 
+  // Grow the stack downwards
   constexpr void Push(const Data &data) {
-    if (m_stackPointer == 0)
+    if (m_stackPointer == STACKSIZE)
       throw "Stack overflow";
-    m_data[--m_stackPointer] = data;
+    m_data[++m_stackPointer] = data;
   }
 
   constexpr Data Pop() {
-    if (m_stackPointer == 66560)
+    if (m_stackPointer == m_floorPointer)
       throw "Stack underflow";
-    return m_data[m_stackPointer++];
+    return m_data[m_stackPointer--];
   }
 
   uint64_t m_basePointer = 0;
   uint64_t m_stackPointer = 0;
   uint64_t m_framePointer = 0;
+  uint64_t m_floorPointer = 0;
   std::array<Data, STACKSIZE> m_data{};
 };
 
@@ -93,6 +97,7 @@ struct State {
   Stack m_stack{};
   Stack m_opStack{};
   Global m_global{};
+  Memory m_memory{};
   uint64_t m_instrPointer = 0;
   FunctionTable m_functionTable{};
   Function *m_activeFunction = nullptr;

@@ -289,15 +289,100 @@ consteval Function ParseFunction(std::string_view func) {
   return f;
 }
 
+consteval Instr ParseGlobalEntry(std::string_view entry) {
+  Instr instr{};
+
+  // ------------------------------------------------
+  // ENTRY NAME
+  // ------------------------------------------------
+  size_t pos = entry.find("(global");
+  pos += 7;
+
+  while (pos < entry.size() && entry[pos] == ' ') {
+    pos++;
+  }
+
+  size_t end = pos;
+  while (end < entry.size() && entry[end] != ' ' && entry[end] != '(') {
+    end++;
+  }
+
+  instr.m_operand = entry.substr(pos, end - pos);
+
+  // ------------------------------------------------
+  // MUTABILITY — skip (mut ...) or just the type
+  // ------------------------------------------------
+  // skip to type — find i32/i64/f32/f64
+  size_t typePos = entry.find("i32", pos);
+  size_t typePos64 = entry.find("i64", pos);
+  size_t typeF32 = entry.find("f32", pos);
+  size_t typeF64 = entry.find("f64", pos);
+
+  size_t typeStart = std::string_view::npos;
+  if (typePos != std::string_view::npos) {
+    typeStart = typePos;
+    instr.m_op = OP::_i32;
+  }
+  if (typePos64 != std::string_view::npos && typePos64 < typeStart) {
+    typeStart = typePos64;
+    instr.m_op = OP::_i64;
+  }
+  if (typeF32 != std::string_view::npos && typeF32 < typeStart) {
+    typeStart = typeF32;
+    instr.m_op = OP::_f32;
+  }
+  if (typeF64 != std::string_view::npos && typeF64 < typeStart) {
+    typeStart = typeF64;
+    instr.m_op = OP::_f64;
+  }
+
+  if (typeStart == std::string_view::npos)
+    throw "Global type not found";
+
+  // ------------------------------------------------
+  // VALUE — find (i32.const 66576) or (f32.const ...)
+  // ------------------------------------------------
+  size_t constPos = entry.find(".const", typeStart);
+  if (constPos == std::string_view::npos)
+    throw "Global value not found";
+
+  constPos += 6; // skip ".const"
+  while (constPos < entry.size() && entry[constPos] == ' ')
+    constPos++;
+
+  // parse value
+  if (instr.m_op == OP::_i32 || instr.m_op == OP::_i64) {
+    int64_t value = 0;
+    bool neg = false;
+    if (entry[constPos] == '-') {
+      neg = true;
+      constPos++;
+    }
+    while (constPos < entry.size() && entry[constPos] >= '0' &&
+           entry[constPos] <= '9') {
+      value = value * 10 + (entry[constPos] - '0');
+      constPos++;
+    }
+    instr.m_operandValue = neg ? -value : value;
+  } else {
+    // f32/f64 — reuse hex float parsing
+    size_t valEnd = constPos;
+    while (valEnd < entry.size() && entry[valEnd] != ')' &&
+           entry[valEnd] != ' ')
+      valEnd++;
+    std::string_view floatStr = entry.substr(constPos, valEnd - constPos);
+    instr.m_operandValueDecimal = ParseHexDecimal(floatStr);
+  }
+
+  return instr;
+}
+
 // ----- MODULE BUILDER -----
 inline consteval uint32_t SetupModule(std::string_view child, State &state) {
   WASMOP type = Identify(child);
   if (type == WASMOP::_func) {
     // Extract and set function
     Function f = ParseFunction(child);
-    if (f.m_typeIndex >= MAXFUNCTIONS) {
-      throw "Function index out of table range";
-    }
     std::size_t hash = constexpr_hash(f.m_name);
     int64_t h = static_cast<int64_t>(hash & 0x7fffffffffffffffULL);
     state.m_functionTable.m_data[h % MAXFUNCTIONS] = f;
@@ -305,6 +390,36 @@ inline consteval uint32_t SetupModule(std::string_view child, State &state) {
   } else if (type == WASMOP::_table) {
   } else if (type == WASMOP::_memory) {
   } else if (type == WASMOP::_global) {
+    // Extract and set global
+    Instr instr = ParseGlobalEntry(child);
+    std::size_t hash = constexpr_hash(instr.m_operand);
+    int64_t h = static_cast<int64_t>(hash % GLOBALSIZE);
+
+    Data globalEntry;
+    if (instr.m_op == OP::_i32) {
+      globalEntry.m_data = static_cast<int32_t>(instr.m_operandValue);
+    } else if (instr.m_op == OP::_i64) {
+      globalEntry.m_data = static_cast<int64_t>(instr.m_operandValue);
+    } else if (instr.m_op == OP::_f32) {
+      globalEntry.m_data = static_cast<float>(instr.m_operandValueDecimal);
+    } else {
+      globalEntry.m_data = static_cast<double>(instr.m_operandValueDecimal);
+    }
+    state.m_global.m_data[h % MAXFUNCTIONS] = globalEntry;
+
+    if (instr.m_operand == "$__stack_pointer") {
+      // Function Stack Initialization
+      Stack &stk = state.m_stack;
+      stk.m_basePointer = instr.m_operandValue;
+      stk.m_stackPointer = instr.m_operandValue;
+      stk.m_floorPointer = instr.m_operandValue;
+
+      // Operand Stack Initialization
+      Stack &op_stk = state.m_opStack;
+      op_stk.m_basePointer = instr.m_operandValue;
+      op_stk.m_stackPointer = instr.m_operandValue;
+      op_stk.m_floorPointer = instr.m_operandValue;
+    }
   } else if (type == WASMOP::_export) {
   } else if (type == WASMOP::_data) {
   } else {

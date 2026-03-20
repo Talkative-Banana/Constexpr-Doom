@@ -210,6 +210,80 @@ struct Data {
   std::variant<int32_t, uint32_t, int64_t, uint64_t, float, double> m_data{};
 };
 
+double ParseHexDecimal(std::string_view operand) {
+  std::string_view s = operand;
+  // strip (;...;) comment
+  size_t commentPos = s.find("(;");
+  if (commentPos != std::string_view::npos) {
+    s = s.substr(0, commentPos);
+    while (!s.empty() && s.back() == ' ')
+      s.remove_suffix(1);
+  }
+
+  operand = s;
+  bool neg = false;
+  if (!operand.empty() && operand[0] == '-') {
+    neg = true;
+    operand.remove_prefix(1);
+  }
+  // skip "0x"
+  operand.remove_prefix(2);
+
+  double mantissa = 0.0f;
+  double frac = 1.0f;
+  bool hasDot = false;
+  size_t i = 0;
+
+  // parse hex mantissa
+  for (; i < operand.size(); i++) {
+    char c = operand[i];
+    if (c == 'p' || c == 'P')
+      break;
+    if (c == '.') {
+      hasDot = true;
+      continue;
+    }
+    int digit = (c >= '0' && c <= '9')   ? c - '0'
+                : (c >= 'a' && c <= 'f') ? c - 'a' + 10
+                                         : c - 'A' + 10;
+    if (hasDot) {
+      frac /= 16.0f;
+      mantissa += digit * frac;
+    } else {
+      mantissa = mantissa * 16.0f + digit;
+    }
+  }
+
+  // parse exponent after 'p'
+  i++; // skip 'p'
+  int expSign = 1;
+  if (operand[i] == '+') {
+    i++;
+  } else if (operand[i] == '-') {
+    expSign = -1;
+    i++;
+  }
+
+  int exp = 0;
+  for (; i < operand.size(); i++) {
+    exp = exp * 10 + (operand[i] - '0');
+  }
+  exp *= expSign;
+
+  // apply exponent (2^exp)
+  double result = mantissa;
+  if (exp > 0) {
+    for (int j = 0; j < exp; j++) {
+      result *= 2.0f;
+    }
+  } else {
+    for (int j = 0; j < -exp; j++) {
+      result /= 2.0f;
+    }
+  }
+  return neg ? -result : result;
+}
+
 struct Instr {
   OP m_op{};
   Member m_mem{};
@@ -364,74 +438,7 @@ struct Instr {
     } else if (isDImm) {
       // Parse the operand as an immediate value for local and global
       // instructions
-      std::string_view s = operand;
-      // strip (;...;) comment
-      size_t commentPos = s.find("(;");
-      if (commentPos != std::string_view::npos) {
-        s = s.substr(0, commentPos);
-        while (!s.empty() && s.back() == ' ')
-          s.remove_suffix(1);
-      }
-
-      operand = s;
-      bool neg = false;
-      if (!operand.empty() && operand[0] == '-') {
-        neg = true;
-        operand.remove_prefix(1);
-      }
-      // skip "0x"
-      operand.remove_prefix(2);
-
-      double mantissa = 0.0f;
-      double frac = 1.0f;
-      bool hasDot = false;
-      size_t i = 0;
-
-      // parse hex mantissa
-      for (; i < operand.size(); i++) {
-        char c = operand[i];
-        if (c == 'p' || c == 'P')
-          break;
-        if (c == '.') {
-          hasDot = true;
-          continue;
-        }
-        int digit = (c >= '0' && c <= '9')   ? c - '0'
-                    : (c >= 'a' && c <= 'f') ? c - 'a' + 10
-                                             : c - 'A' + 10;
-        if (hasDot) {
-          frac /= 16.0f;
-          mantissa += digit * frac;
-        } else {
-          mantissa = mantissa * 16.0f + digit;
-        }
-      }
-
-      // parse exponent after 'p'
-      i++; // skip 'p'
-      int expSign = 1;
-      if (operand[i] == '+')
-        i++;
-      else if (operand[i] == '-') {
-        expSign = -1;
-        i++;
-      }
-
-      int exp = 0;
-      for (; i < operand.size(); i++)
-        exp = exp * 10 + (operand[i] - '0');
-      exp *= expSign;
-
-      // apply exponent (2^exp)
-      double result = mantissa;
-      if (exp > 0)
-        for (int j = 0; j < exp; j++)
-          result *= 2.0f;
-      else
-        for (int j = 0; j < -exp; j++)
-          result /= 2.0f;
-
-      m_operandValueDecimal = neg ? -result : result;
+      m_operandValueDecimal = ParseHexDecimal(operand);
     } else if (m_operand.empty()) {
       // Set the operand type
       m_type = OperandType::_none;
