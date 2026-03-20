@@ -441,6 +441,80 @@ consteval STATUS ParseDataEntry(std::string_view entry, Memory &memory) {
   return STATUS::OK;
 }
 
+consteval STATUS ParseElemEntry(std::string_view entry, VirtualTable &vtable,
+                                FunctionTable &functionTable) {
+  // ------------------------------------------------
+  // BASE INDEX — find (i32.const N)
+  // ------------------------------------------------
+  size_t constPos = entry.find("i32.const");
+  if (constPos == std::string_view::npos)
+    throw "Elem entry base index not found";
+
+  constPos += 9; // skip "i32.const"
+  while (constPos < entry.size() && entry[constPos] == ' ')
+    constPos++;
+
+  int32_t baseIdx = 0;
+  while (constPos < entry.size() && entry[constPos] >= '0' &&
+         entry[constPos] <= '9') {
+    baseIdx = baseIdx * 10 + (entry[constPos] - '0');
+    constPos++;
+  }
+
+  // ------------------------------------------------
+  // FUNCTION NAMES — collect all $func names after "func"
+  // ------------------------------------------------
+  size_t funcKeyword = entry.find("func", constPos);
+  if (funcKeyword == std::string_view::npos){
+    throw "Elem entry func keyword not found";
+  }
+
+  funcKeyword += 4; // skip "func"
+
+  int32_t offset = 0;
+  size_t pos = funcKeyword;
+
+  while (pos < entry.size()) {
+    // skip whitespace
+    while (pos < entry.size() && entry[pos] == ' '){
+      pos++;
+    }
+
+    // end of entry
+    if (pos >= entry.size() || entry[pos] == ')'){
+      break;
+    }
+
+    // must start with $
+    if (entry[pos] != '$'){
+      break;
+    }
+
+    // extract function name
+    size_t nameStart = pos;
+    while (pos < entry.size() && entry[pos] != ' ' && entry[pos] != ')'){
+      pos++;
+    }
+
+    std::string_view funcName = entry.substr(nameStart, pos - nameStart);
+
+    // look up function in function table by hash
+    size_t hash = constexpr_hash(funcName);
+    int32_t idx = static_cast<int32_t>(hash % MAXFUNCTIONS);
+    Function &f = functionTable.m_data[idx];
+
+    // store in virtual table
+    int32_t tableIdx = baseIdx + offset;
+    if (tableIdx >= MAXVIRTUALTABLESIZE) {
+      throw "Virtual table overflow";
+    }
+
+    vtable.m_data[tableIdx] = &f;
+    offset++;
+  }
+
+  return STATUS::OK;
+}
 // ----- MODULE BUILDER -----
 inline consteval uint32_t SetupModule(std::string_view child, State &state) {
   WASMOP type = Identify(child);
@@ -450,6 +524,7 @@ inline consteval uint32_t SetupModule(std::string_view child, State &state) {
     std::size_t hash = constexpr_hash(f.m_name);
     int64_t h = static_cast<int64_t>(hash & 0x7fffffffffffffffULL);
     state.m_functionTable.m_data[h % MAXFUNCTIONS] = f;
+    state.m_functionTable.m_count++;
   } else if (type == WASMOP::_type) {
   } else if (type == WASMOP::_table) {
   } else if (type == WASMOP::_memory) {
@@ -470,6 +545,7 @@ inline consteval uint32_t SetupModule(std::string_view child, State &state) {
       globalEntry.m_data = static_cast<double>(instr.m_operandValueDecimal);
     }
     state.m_global.m_data[h % MAXFUNCTIONS] = globalEntry;
+    state.m_global.m_count++;
 
     if (instr.m_operand == "$__stack_pointer") {
       // Function Stack Initialization
@@ -487,6 +563,11 @@ inline consteval uint32_t SetupModule(std::string_view child, State &state) {
   } else if (type == WASMOP::_export) {
   } else if (type == WASMOP::_data) {
     STATUS res = ParseDataEntry(child, state.m_memory);
+    if (res != STATUS::OK) {
+      throw "data segemnet parse falied\n";
+    }
+  } else if (type == WASMOP::_elem) {
+    STATUS res = ParseElemEntry(child, state.m_virtualTable, state.m_functionTable);
     if (res != STATUS::OK) {
       throw "data segemnet parse falied\n";
     }

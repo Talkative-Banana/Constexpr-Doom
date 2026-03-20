@@ -23,7 +23,6 @@ consteval STATUS loop(State &state) {
 
     switch (_op.m_op) {
     case OP::_nop: {
-      state.m_opStack.Pop();
       state.m_instrPointer++;
       continue;
     }
@@ -145,6 +144,14 @@ consteval STATUS loop(State &state) {
       }
       break;
     }
+    case OP::_call_indirect: {
+      STATUS res = HandleCallIndirect(state);
+      if (res == STATUS::ERROR) {
+        throw "CallIndirect Call Handling Failed!";
+        return STATUS::ERROR;
+      }
+      break;
+    }
     default: {
       throw "Instruction not handled";
     }
@@ -197,8 +204,8 @@ inline consteval STATUS Run() {
 
   Stack &op_stk = state.m_opStack;
   Data zdata{};
-  
-  // Parameters for added main 
+
+  // Parameters for added main
   zdata.m_data.emplace<int32_t>(0);
   op_stk.Push(zdata);
   op_stk.Push(zdata);
@@ -222,7 +229,7 @@ inline consteval STATUS Run() {
 
   Data returnValue = state.m_opStack.Pop();
 
-  if (std::get<int32_t>(returnValue.m_data) != 18) {
+  if (std::get<int32_t>(returnValue.m_data) != 2) {
     throw "Invalid return value from main!";
   }
   return STATUS::OK;

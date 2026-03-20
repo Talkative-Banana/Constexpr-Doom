@@ -50,18 +50,23 @@ struct Function {
 };
 
 struct FunctionTable {
+  int m_count{};
   std::array<Function, MAXFUNCTIONS> m_data{};
 };
 
 struct Type {};
 
-struct Table {};
+struct VirtualTable {
+  int m_count{};
+  std::array<Function *, MAXVIRTUALTABLESIZE> m_data{};
+};
 
 struct Memory {
   std::array<uint8_t, MEMORYSIZE> m_data{};
 };
 
 struct Global {
+  int m_count{};
   std::array<Data, GLOBALSIZE> m_data{};
 };
 
@@ -100,5 +105,6 @@ struct State {
   Memory m_memory{};
   uint64_t m_instrPointer = 0;
   FunctionTable m_functionTable{};
+  VirtualTable m_virtualTable{};
   Function *m_activeFunction = nullptr;
 };

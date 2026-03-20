@@ -10,6 +10,7 @@ static constexpr int MAXNUMPARAMS = 512;
 
 static constexpr int MAXPARTS = 4096;
 static constexpr int MAXFUNCTIONS = 4096;
+static constexpr int MAXVIRTUALTABLESIZE = 1024;
 
 static constexpr int STACKSIZE = 131072; // 128KB
 static constexpr int GLOBALSIZE = 1024;

@@ -19,6 +19,7 @@ enum class WASMOP {
   _global,
   _export,
   _data,
+  _elem,
 };
 
 // ----- IDENTIFY FUNCTION -----
@@ -37,6 +38,8 @@ constexpr WASMOP Identify(std::string_view block) {
     return WASMOP::_export;
   } else if (block.starts_with("(data")) {
     return WASMOP::_data;
+  } else if (block.starts_with("(elem")) {
+    return WASMOP::_elem;
   } else {
     return WASMOP::_unknown;
   }
@@ -327,18 +330,25 @@ struct Instr {
       m_op = OP::_unreachable;
     } else if (_op == "block") {
       m_op = OP::_block;
-      return;
     } else if (_op == "loop") {
       m_op = OP::_loop;
-      return;
     } else if (_op == "br_if") {
       m_op = OP::_br_if;
     } else if (_op == "br") {
       m_op = OP::_br;
     } else if (_op == "end") {
       m_op = OP::_end;
+    } else if (_op == "call_indirect") {
+      m_op = OP::_call_indirect;
+    } else if (_op == "drop") {
+      m_op = OP::_drop;
     } else {
       throw "Local instructions not supported yet";
+    }
+
+    // Early return in case of block elements
+    if (m_op == OP::_block || m_op == OP::_loop) {
+      return;
     }
 
     // Set the member
@@ -489,6 +499,9 @@ struct Instr {
       } else {
         m_operandValue = value;
       }
+    } else if (m_op == OP::_call_indirect) {
+      // TODO: skip type check for now
+      return;
     } else {
       throw "Invalid Operand Parsing";
     }

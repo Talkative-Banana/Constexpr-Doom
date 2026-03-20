@@ -271,6 +271,22 @@ consteval STATUS HandleLoop(State &state) {
   return HandleBlock(state);
 }
 
+consteval STATUS HandleCallIndirect(State &state) {
+  Stack &op_stk = state.m_opStack;
+
+  // pop table index first
+  Data idxData = op_stk.Pop();
+  int32_t tableIdx = std::get<int32_t>(idxData.m_data);
+
+  // look up function in virtual table
+  Function *f = state.m_virtualTable.m_data[tableIdx];
+  if (f == nullptr)
+    throw "call_indirect: null function pointer";
+
+  // now call it — arguments are already on op_stk
+  return HandleCall(state, f->m_name);
+}
+
 consteval bool isArithmetic(const Instr &instr) {
   return instr.m_mem == Member::_add || instr.m_mem == Member::_sub ||
          instr.m_mem == Member::_mul || instr.m_mem == Member::_le_s ||
