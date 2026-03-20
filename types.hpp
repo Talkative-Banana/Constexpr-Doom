@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <assert.h>
 #include <cstdint>
 #include <string_view>
@@ -171,6 +172,7 @@ enum class Member {
   _ne,
   _lt_s,
   _gt_s,
+  _gt_u,
   _le_s,
   _ge_s,
   _lt,
@@ -193,6 +195,8 @@ enum class Member {
   _trunc_f64_s,
   _convert_i32_s,
   _convert_i64_s,
+  _extend_i32_s,
+  _wrap_i64,
 };
 
 enum class OperandType {
@@ -294,6 +298,8 @@ struct Instr {
   std::string_view m_operand{};
   int64_t m_operandValue{};
   double m_operandValueDecimal{};
+  int32_t m_brCount{};
+  std::array<uint32_t, BRTABLESIZE> m_brTable{};
 
   constexpr Instr() = default;
   constexpr Instr(OP op, Member mem, OperandType type, std::string_view operand,
@@ -342,12 +348,16 @@ struct Instr {
       m_op = OP::_call_indirect;
     } else if (_op == "drop") {
       m_op = OP::_drop;
+    } else if (_op == "select") {
+      m_op = OP::_select;
+    } else if (_op == "br_table") {
+      m_op = OP::_br_table;
     } else {
       throw "Local instructions not supported yet";
     }
 
     // Early return in case of block elements
-    if (m_op == OP::_block || m_op == OP::_loop) {
+    if (m_op == OP::_block || m_op == OP::_loop || m_op == OP::_select) {
       return;
     }
 
@@ -399,6 +409,8 @@ struct Instr {
       m_mem = Member::_load8_u;
     } else if (_mem == "gt_s") {
       m_mem = Member::_gt_s;
+    } else if (_mem == "gt_u") {
+      m_mem = Member::_gt_u;
     } else if (_mem == "abs") {
       m_mem = Member::_abs;
     } else if (_mem == "lt") {
@@ -415,6 +427,12 @@ struct Instr {
       m_mem = Member::_promote_f32;
     } else if (_mem == "demote_f64") {
       m_mem = Member::_demote_f64;
+    } else if (_mem == "extend_i32_s") {
+      m_mem = Member::_extend_i32_s;
+    } else if (_mem == "wrap_i64") {
+      m_mem = Member::_wrap_i64;
+    } else if (_mem == "ge_s") {
+      m_mem = Member::_ge_s;
     } else {
       throw "Invalid Memeber Parsing";
     }
@@ -423,7 +441,50 @@ struct Instr {
     bool isDec = (m_op == OP::_f32 || m_op == OP::_f64);
     bool isIImm = (isInt && m_mem == Member::_const);
     bool isDImm = (isDec && m_mem == Member::_const);
-    if (isIImm || m_op == OP::_local) {
+
+    if (m_op == OP::_br_table) {
+      std::string_view s = m_operand;
+      m_brCount = 0;
+
+      size_t pos = 0;
+      while (pos < s.size()) {
+        // skip whitespace
+        while (pos < s.size() && s[pos] == ' ') {
+          pos++;
+        }
+
+        if (pos >= s.size()) {
+          break;
+        }
+
+        // skip (;...;) comment
+        if (s[pos] == '(') {
+          size_t end = s.find(";)", pos);
+          if (end != std::string_view::npos) {
+            pos = end + 2;
+          } else {
+            pos++;
+          }
+        }
+
+        // parse number
+        if (s[pos] >= '0' && s[pos] <= '9') {
+          int32_t value = 0;
+          while (pos < s.size() && s[pos] >= '0' && s[pos] <= '9') {
+            value = value * 10 + (s[pos] - '0');
+            pos++;
+          }
+          if (m_brCount >= BRTABLESIZE)
+            throw "br_table overflow";
+          m_brTable[m_brCount++] = value;
+        } else {
+          pos++;
+        }
+      }
+      if (m_brCount == 0) {
+        throw "br_table has no entries";
+      }
+    } else if (isIImm || m_op == OP::_local) {
       // Parse the operand as an immediate value for local and global
       // instructions
       int64_t value = 0;

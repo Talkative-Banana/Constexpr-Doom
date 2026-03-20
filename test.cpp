@@ -1,24 +1,20 @@
-class A {
-public:
-  virtual int hello() { return 0; }
-};
+int matrix[8][8];
 
-class B : public A {
-public:
-  virtual int hello() { return 1; }
-};
+void fill(int val) {
+  for (int i = 0; i < 8; i++)
+    for (int j = 0; j < 8; j++)
+      matrix[i][j] = val + i * 8 + j;
+}
 
-class C : public A {
-public:
-  virtual int hello() { return 2; }
-};
+int sum() {
+  int s = 0;
+  for (int i = 0; i < 8; i++)
+    for (int j = 0; j < 8; j++)
+      s += matrix[i][j];
+  return s;
+}
 
 int main() {
-  B b;
-  C c;
-  A a;
-  A &a1 = b;
-  A &a2 = c;
-  int res = a.hello() + a2.hello();
-  return res;
+  fill(0);
+  return sum(); // expected: 2016
 }

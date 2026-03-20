@@ -48,8 +48,19 @@ consteval STATUS loop(State &state) {
       break;
     }
     case OP::_select: {
-      // using type = SELECT<True, float, int>::type;
-      // return std::is_same_v<type, int>;
+      STATUS res = HandleSelect(state);
+      if (res == STATUS::ERROR) {
+        throw "Select Call Handling Failed!";
+        return STATUS::ERROR;
+      }
+      break;
+    }
+    case OP::_br_table: {
+      STATUS res = HandleBrTable(state, _op);
+      if (res == STATUS::ERROR) {
+        throw "Branch Table Call Handling Failed!";
+        return STATUS::ERROR;
+      }
       break;
     }
     case OP::_call: {
@@ -222,14 +233,13 @@ inline consteval STATUS Run() {
     throw "Execution Failed!";
   }
 
-  // 66563
   if (state.m_opStack.m_stackPointer != state.m_opStack.m_floorPointer + 1) {
     throw "No return value from main!";
   }
 
   Data returnValue = state.m_opStack.Pop();
 
-  if (std::get<int32_t>(returnValue.m_data) != 2) {
+  if (std::get<int32_t>(returnValue.m_data) != 2016) {
     throw "Invalid return value from main!";
   }
   return STATUS::OK;

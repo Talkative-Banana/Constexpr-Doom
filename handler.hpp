@@ -143,6 +143,21 @@ consteval STATUS HandleGlobal(State &state, const Instr &instr) {
   return STATUS::OK;
 }
 
+consteval STATUS HandleSelect(State &state) {
+  Stack &op_stk = state.m_opStack;
+
+  Data cond = op_stk.Pop();
+  Data val2 = op_stk.Pop();
+  Data val1 = op_stk.Pop();
+
+  if (std::get<int32_t>(cond.m_data))
+    op_stk.Push(val1);
+  else
+    op_stk.Push(val2);
+  state.m_instrPointer++;
+  return STATUS::OK;
+}
+
 consteval STATUS HandleReturn(State &state) {
   // Move the stack pointer back to the base pointer
   Stack &stk = state.m_stack;
@@ -218,6 +233,30 @@ consteval STATUS HandleBranch(State &state, Instr &instr) {
   return STATUS::OK;
 }
 
+consteval STATUS HandleBrTable(State &state, const Instr &instr) {
+  // pop index
+  Data idxData = state.m_opStack.Pop();
+  int32_t idx = std::get<int32_t>(idxData.m_data);
+
+  // clamp to default if out of bounds
+  // m_brTable is your array of branch targets
+
+  // m_operandValue is the count
+  int32_t target;
+  if (idx <= instr.m_brCount - 1) {
+    target = instr.m_brTable[idx];
+  } else {
+    target = instr.m_brTable[instr.m_brCount - 1]; // default
+  }
+
+  Instr newInstr{};
+  newInstr.m_op = OP::_br;
+  newInstr.m_mem = Member::_none;
+  newInstr.m_operandValue = target;
+
+  return HandleBranch(state, newInstr);
+}
+
 consteval STATUS HandleBranchIf(State &state, Instr &instr) {
   Function *f = state.m_activeFunction;
 
@@ -290,13 +329,16 @@ consteval STATUS HandleCallIndirect(State &state) {
 consteval bool isArithmetic(const Instr &instr) {
   return instr.m_mem == Member::_add || instr.m_mem == Member::_sub ||
          instr.m_mem == Member::_mul || instr.m_mem == Member::_le_s ||
-         instr.m_mem == Member::_and || instr.m_mem == Member::_eqz ||
-         instr.m_mem == Member::_lt_s || instr.m_mem == Member::_rem_s ||
-         instr.m_mem == Member::_shl || instr.m_mem == Member::_div_s ||
-         instr.m_mem == Member::_ne || instr.m_mem == Member::_shr_s ||
-         instr.m_mem == Member::_gt_s || instr.m_mem == Member::_eq ||
+         instr.m_mem == Member::_ge_s || instr.m_mem == Member::_and ||
+         instr.m_mem == Member::_eqz || instr.m_mem == Member::_lt_s ||
+         instr.m_mem == Member::_rem_s || instr.m_mem == Member::_shl ||
+         instr.m_mem == Member::_div_s || instr.m_mem == Member::_ne ||
+         instr.m_mem == Member::_shr_s || instr.m_mem == Member::_gt_s ||
+         instr.m_mem == Member::_gt_u || instr.m_mem == Member::_eq ||
          instr.m_mem == Member::_xor || instr.m_mem == Member::_trunc_f32_s ||
-         instr.m_mem == Member::_trunc_f64_s;
+         instr.m_mem == Member::_trunc_f64_s ||
+         instr.m_mem == Member::_extend_i32_s ||
+         instr.m_mem == Member::_wrap_i64;
 }
 
 consteval bool isArithmeticDecimal(const Instr &instr) {
@@ -317,7 +359,9 @@ consteval bool isSingleOperand(const Instr &instr) {
          instr.m_mem == Member::_convert_i32_s ||
          instr.m_mem == Member::_convert_i64_s ||
          instr.m_mem == Member::_promote_f32 ||
-         instr.m_mem == Member::_demote_f64;
+         instr.m_mem == Member::_demote_f64 ||
+         instr.m_mem == Member::_extend_i32_s ||
+         instr.m_mem == Member::_wrap_i64;
 }
 
 template <typename T1>
@@ -363,6 +407,12 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
       result = std::get<T1>(a.m_data) >> std::get<T1>(b.m_data);
     } else if (instr.m_mem == Member::_gt_s) {
       result = std::get<T1>(a.m_data) > std::get<T1>(b.m_data);
+    } else if (instr.m_mem == Member::_ge_s) {
+      result = std::get<T1>(a.m_data) >= std::get<T1>(b.m_data);
+    } else if (instr.m_mem == Member::_gt_u) {
+      using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
+      result = static_cast<UT>(std::get<T1>(a.m_data)) >
+               static_cast<UT>(std::get<T1>(b.m_data));
     } else if (instr.m_mem == Member::_eq) {
       result = std::get<T1>(a.m_data) == std::get<T1>(b.m_data);
     } else if (instr.m_mem == Member::_xor) {
@@ -371,8 +421,12 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
       result = static_cast<T1>(std::get<float>(b.m_data));
     } else if (instr.m_mem == Member::_trunc_f64_s) {
       result = static_cast<T1>(std::get<double>(b.m_data));
+    } else if (instr.m_mem == Member::_extend_i32_s) {
+      result = static_cast<T1>(std::get<int32_t>(b.m_data));
+    } else if (instr.m_mem == Member::_wrap_i64) {
+      result = static_cast<int32_t>(std::get<int64_t>(b.m_data));
     } else {
-      throw "Unsupported I32 operation";
+      throw "Unsupported Ixx operation";
     }
     Data data;
     data.m_data = static_cast<T1>(result);

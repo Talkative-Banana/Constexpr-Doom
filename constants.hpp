@@ -2,6 +2,7 @@
 #include <string_view>
 
 static constexpr int MAXMODULES = 8;
+static constexpr int BRTABLESIZE = 32;
 static constexpr int BLOCKSIZE = 128;
 static constexpr int MAXCHILDREN = 512;
 static constexpr int LOCALINSTRSIZE = 128;
