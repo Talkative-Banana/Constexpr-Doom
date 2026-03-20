@@ -377,6 +377,70 @@ consteval Instr ParseGlobalEntry(std::string_view entry) {
   return instr;
 }
 
+consteval STATUS ParseDataEntry(std::string_view entry, Memory &memory) {
+
+  // ------------------------------------------------
+  // ADDRESS — find (i32.const 1024)
+  // ------------------------------------------------
+  size_t constPos = entry.find("i32.const");
+  if (constPos == std::string_view::npos)
+    throw "Data entry address not found";
+
+  constPos += 9; // skip "i32.const"
+  while (constPos < entry.size() && entry[constPos] == ' ')
+    constPos++;
+
+  int32_t addr = 0;
+  while (constPos < entry.size() && entry[constPos] >= '0' &&
+         entry[constPos] <= '9') {
+    addr = addr * 10 + (entry[constPos] - '0');
+    constPos++;
+  }
+
+  // ------------------------------------------------
+  // BYTES — find the quoted string "\05\00\00\00"
+  // ------------------------------------------------
+  size_t quoteStart = entry.find('"');
+  if (quoteStart == std::string_view::npos)
+    throw "Data entry bytes not found";
+  quoteStart++; // skip opening quote
+
+  size_t quoteEnd = entry.find('"', quoteStart);
+  if (quoteEnd == std::string_view::npos)
+    throw "Data entry closing quote not found";
+
+  std::string_view bytes = entry.substr(quoteStart, quoteEnd - quoteStart);
+
+  // ------------------------------------------------
+  // PARSE BYTES — \xx escape sequences or raw chars
+  // ------------------------------------------------
+  size_t i = 0;
+  int32_t offset = 0;
+  while (i < bytes.size()) {
+    if (bytes[i] == '\\') {
+      // hex escape \xx
+      i++;
+      auto hexDigit = [](char c) -> uint8_t {
+        if (c >= '0' && c <= '9')
+          return c - '0';
+        if (c >= 'a' && c <= 'f')
+          return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F')
+          return c - 'A' + 10;
+        return 0;
+      };
+      uint8_t hi = hexDigit(bytes[i++]);
+      uint8_t lo = hexDigit(bytes[i++]);
+      memory.m_data[addr + offset++] = static_cast<uint8_t>((hi << 4) | lo);
+    } else {
+      // raw character
+      memory.m_data[addr + offset++] = static_cast<uint8_t>(bytes[i++]);
+    }
+  }
+
+  return STATUS::OK;
+}
+
 // ----- MODULE BUILDER -----
 inline consteval uint32_t SetupModule(std::string_view child, State &state) {
   WASMOP type = Identify(child);
@@ -422,6 +486,10 @@ inline consteval uint32_t SetupModule(std::string_view child, State &state) {
     }
   } else if (type == WASMOP::_export) {
   } else if (type == WASMOP::_data) {
+    STATUS res = ParseDataEntry(child, state.m_memory);
+    if (res != STATUS::OK) {
+      throw "data segemnet parse falied\n";
+    }
   } else {
     throw "Unknown module child!";
   }

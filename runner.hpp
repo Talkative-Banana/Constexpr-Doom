@@ -222,7 +222,7 @@ inline consteval STATUS Run() {
 
   Data returnValue = state.m_opStack.Pop();
 
-  if (std::get<int32_t>(returnValue.m_data) != 13) {
+  if (std::get<int32_t>(returnValue.m_data) != 18) {
     throw "Invalid return value from main!";
   }
   return STATUS::OK;
