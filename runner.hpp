@@ -239,7 +239,7 @@ inline consteval STATUS Run() {
 
   Data returnValue = state.m_opStack.Pop();
 
-  if (std::get<int32_t>(returnValue.m_data) != 2016) {
+  if (std::get<int32_t>(returnValue.m_data) != 0) {
     throw "Invalid return value from main!";
   }
   return STATUS::OK;

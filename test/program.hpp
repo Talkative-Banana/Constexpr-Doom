@@ -3743,7 +3743,7 @@ inline constexpr std::string_view program21 = R"(
 )";
 
 // 2016
-inline constexpr std::string_view program = R"(
+inline constexpr std::string_view program22 = R"(
 (module
   (type (;0;) (func (param i32)))
   (type (;1;) (func (result i32)))
@@ -4095,6 +4095,22 @@ inline constexpr std::string_view program = R"(
   (table (;0;) 1 1 funcref)
   (memory (;0;) 2)
   (global $__stack_pointer (mut i32) (i32.const 66816))
+  (export "memory" (memory 0))
+  (export "main" (func $main)))
+)";
+
+// 0
+inline static constexpr std::string_view program = R"(
+(module
+  (type (;0;) (func (result i32)))
+  (type (;1;) (func (param i32 i32) (result i32)))
+  (func $__original_main (type 0) (result i32)
+    i32.const 0)
+  (func $main (type 1) (param i32 i32) (result i32)
+    call $__original_main)
+  (table (;0;) 1 1 funcref)
+  (memory (;0;) 2)
+  (global $__stack_pointer (mut i32) (i32.const 66560))
   (export "memory" (memory 0))
   (export "main" (func $main)))
 )";

@@ -11,8 +11,19 @@ inline consteval std::pair<uint32_t, std::array<Span, MAXMODULES>>
 ParseProgram(std::string_view module) {
   std::array<Span, MAXMODULES> modules{};
   uint32_t start = 0, count = 0, open = 0;
+  bool inString = false;
+
   for (uint32_t i = 0; i < module.size(); i++) {
     char c = module[i];
+
+    if (c == '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString)
+      continue;
+
     if (c == '(') {
       if (open == 0)
         start = i;
@@ -38,23 +49,30 @@ inline consteval uint32_t
 ParseModuleItems(std::string_view module,
                  std::array<Span, MAXCHILDREN> &items) {
   uint32_t open = 0, start = 0, count = 0;
+  bool inString = false;
+
   for (uint32_t i = 0; i < module.size(); ++i) {
     char c = module[i];
+
+    if (c == '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString)
+      continue;
+
     if (c == '(') {
-      if (open == 0) { // start of a module child
+      if (open == 0)
         start = i;
-      }
       open++;
     }
     if (c == ')') {
       if (open == 0)
         throw "Unbalanced parentheses";
       open--;
-      if (count < MAXCHILDREN) {
-        if (open == 0) { // closing module child
-          items[count] = {start, i + 1};
-          count++;
-        }
+      if (open == 0 && count < MAXCHILDREN) {
+        items[count++] = {start, i + 1};
       }
     }
   }
@@ -72,7 +90,7 @@ inline consteval uint32_t ParseModule(std::string_view module,
 
     if (type == WASMOP::_unknown) {
       // throw if invalid child
-      throw "Unknown module child!";
+      throw "Unknown module child while parsing!";
     }
   }
 
@@ -250,8 +268,8 @@ consteval Function ParseFunction(std::string_view func) {
         if (f.m_bodyCount >= f.m_body.size())
           throw "Too many instructions";
 
-        Instr instr = ParseInstruction(line);
-        f.m_body[f.m_bodyCount++] = instr;
+        f.m_body[f.m_bodyCount++] = ParseInstruction(line);
+        Instr &instr = f.m_body[f.m_bodyCount - 1];
 
         // If a block instruction
         if (instr.m_op == OP::_block || instr.m_op == OP::_loop) {
@@ -465,7 +483,7 @@ consteval STATUS ParseElemEntry(std::string_view entry, VirtualTable &vtable,
   // FUNCTION NAMES — collect all $func names after "func"
   // ------------------------------------------------
   size_t funcKeyword = entry.find("func", constPos);
-  if (funcKeyword == std::string_view::npos){
+  if (funcKeyword == std::string_view::npos) {
     throw "Elem entry func keyword not found";
   }
 
@@ -476,23 +494,23 @@ consteval STATUS ParseElemEntry(std::string_view entry, VirtualTable &vtable,
 
   while (pos < entry.size()) {
     // skip whitespace
-    while (pos < entry.size() && entry[pos] == ' '){
+    while (pos < entry.size() && entry[pos] == ' ') {
       pos++;
     }
 
     // end of entry
-    if (pos >= entry.size() || entry[pos] == ')'){
+    if (pos >= entry.size() || entry[pos] == ')') {
       break;
     }
 
     // must start with $
-    if (entry[pos] != '$'){
+    if (entry[pos] != '$') {
       break;
     }
 
     // extract function name
     size_t nameStart = pos;
-    while (pos < entry.size() && entry[pos] != ' ' && entry[pos] != ')'){
+    while (pos < entry.size() && entry[pos] != ' ' && entry[pos] != ')') {
       pos++;
     }
 
@@ -561,13 +579,15 @@ inline consteval uint32_t SetupModule(std::string_view child, State &state) {
       op_stk.m_floorPointer = instr.m_operandValue;
     }
   } else if (type == WASMOP::_export) {
+  } else if (type == WASMOP::_import) {
   } else if (type == WASMOP::_data) {
     STATUS res = ParseDataEntry(child, state.m_memory);
     if (res != STATUS::OK) {
       throw "data segemnet parse falied\n";
     }
   } else if (type == WASMOP::_elem) {
-    STATUS res = ParseElemEntry(child, state.m_virtualTable, state.m_functionTable);
+    STATUS res =
+        ParseElemEntry(child, state.m_virtualTable, state.m_functionTable);
     if (res != STATUS::OK) {
       throw "data segemnet parse falied\n";
     }

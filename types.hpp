@@ -18,6 +18,7 @@ enum class WASMOP {
   _type,
   _memory,
   _global,
+  _import,
   _export,
   _data,
   _elem,
@@ -41,6 +42,8 @@ constexpr WASMOP Identify(std::string_view block) {
     return WASMOP::_data;
   } else if (block.starts_with("(elem")) {
     return WASMOP::_elem;
+  } else if (block.starts_with("(import")) {
+    return WASMOP::_import;
   } else {
     return WASMOP::_unknown;
   }
@@ -156,12 +159,14 @@ enum class Member {
   _sub,
   _mul,
   _div_s,
+  _div_u,
   _rem_s,
   _and,
   _or,
   _xor,
   _shl,
   _shr_s,
+  _shr_u,
   _rotl,
   _rotr,
   _div,
@@ -171,10 +176,13 @@ enum class Member {
   _eqz,
   _ne,
   _lt_s,
+  _lt_u,
   _gt_s,
   _gt_u,
   _le_s,
+  _le_u,
   _ge_s,
+  _ge_u,
   _lt,
   _gt,
   _le,
@@ -191,6 +199,10 @@ enum class Member {
   _store,
   _load,
   _load8_u,
+  _load16_u,
+  _load16_s,
+  _store8,
+  _store16,
   _trunc_f32_s,
   _trunc_f64_s,
   _convert_i32_s,
@@ -217,7 +229,7 @@ struct Data {
   std::variant<int32_t, uint32_t, int64_t, uint64_t, float, double> m_data{};
 };
 
-double ParseHexDecimal(std::string_view operand) {
+constexpr double ParseHexDecimal(std::string_view operand) {
   std::string_view s = operand;
   // strip (;...;) comment
   size_t commentPos = s.find("(;");
@@ -334,6 +346,8 @@ struct Instr {
       m_op = OP::_call;
     } else if (_op == "halt") {
       m_op = OP::_unreachable;
+    } else if (_op == "unreachable") {
+      m_op = OP::_unreachable;
     } else if (_op == "block") {
       m_op = OP::_block;
     } else if (_op == "loop") {
@@ -361,6 +375,7 @@ struct Instr {
       return;
     }
 
+    bool is_LoadStore = false;
     // Set the member
     if (pos == std::string_view::npos) {
       // No member
@@ -385,8 +400,12 @@ struct Instr {
       m_mem = Member::_load;
     } else if (_mem == "le_s") {
       m_mem = Member::_le_s;
+    } else if (_mem == "le_u") {
+      m_mem = Member::_le_u;
     } else if (_mem == "lt_s") {
       m_mem = Member::_lt_s;
+    } else if (_mem == "lt_u") {
+      m_mem = Member::_lt_u;
     } else if (_mem == "and") {
       m_mem = Member::_and;
     } else if (_mem == "eqz") {
@@ -395,18 +414,37 @@ struct Instr {
       m_mem = Member::_eq;
     } else if (_mem == "xor") {
       m_mem = Member::_xor;
+    } else if (_mem == "or") {
+      m_mem = Member::_or;
     } else if (_mem == "rem_s") {
       m_mem = Member::_rem_s;
     } else if (_mem == "shl") {
       m_mem = Member::_shl;
     } else if (_mem == "div_s") {
       m_mem = Member::_div_s;
+    } else if (_mem == "div_u") {
+      m_mem = Member::_div_u;
     } else if (_mem == "ne") {
       m_mem = Member::_ne;
     } else if (_mem == "shr_s") {
       m_mem = Member::_shr_s;
+    } else if (_mem == "shr_u") {
+      m_mem = Member::_shr_u;
     } else if (_mem == "load8_u") {
       m_mem = Member::_load8_u;
+      is_LoadStore = true;
+    } else if (_mem == "load16_u") {
+      m_mem = Member::_load16_u;
+      is_LoadStore = true;
+    } else if (_mem == "load16_s") {
+      m_mem = Member::_load16_s;
+      is_LoadStore = true;
+    } else if (_mem == "store8") {
+      m_mem = Member::_store8;
+      is_LoadStore = true;
+    } else if (_mem == "store16") {
+      m_mem = Member::_store16;
+      is_LoadStore = true;
     } else if (_mem == "gt_s") {
       m_mem = Member::_gt_s;
     } else if (_mem == "gt_u") {
@@ -433,6 +471,12 @@ struct Instr {
       m_mem = Member::_wrap_i64;
     } else if (_mem == "ge_s") {
       m_mem = Member::_ge_s;
+    } else if (_mem == "ge_u") {
+      m_mem = Member::_ge_u;
+    } else if (_mem == "ge") {
+      m_mem = Member::_ge;
+    } else if (_mem == "div") {
+      m_mem = Member::_div;
     } else {
       throw "Invalid Memeber Parsing";
     }
@@ -563,8 +607,39 @@ struct Instr {
     } else if (m_op == OP::_call_indirect) {
       // TODO: skip type check for now
       return;
+    } else if (is_LoadStore) {
+      // no offset
+      m_operandValue = 0; // default
     } else {
-      throw "Invalid Operand Parsing";
+      OP op = m_op;
+      if (op == OP::_local)
+        throw "isLoadStore: op is local";
+      if (op == OP::_global)
+        throw "isLoadStore: op is global";
+      if (op == OP::_return)
+        throw "isLoadStore: op is return";
+      if (op == OP::_call)
+        throw "isLoadStore: op is call";
+      if (op == OP::_unreachable)
+        throw "isLoadStore: op is unreachable";
+      if (op == OP::_block)
+        throw "isLoadStore: op is block";
+      if (op == OP::_loop)
+        throw "isLoadStore: op is loop";
+      if (op == OP::_br_if)
+        throw "isLoadStore: op is br_if";
+      if (op == OP::_br)
+        throw "isLoadStore: op is br";
+      if (op == OP::_end)
+        throw "isLoadStore: op is end";
+      if (op == OP::_call_indirect)
+        throw "isLoadStore: op is call_indirect";
+      if (op == OP::_drop)
+        throw "isLoadStore: op is drop";
+      if (op == OP::_select)
+        throw "isLoadStore: op is select";
+      if (op == OP::_br_table)
+        throw "isLoadStore: op is br_table";
     }
   }
 };

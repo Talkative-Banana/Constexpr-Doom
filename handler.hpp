@@ -335,7 +335,8 @@ consteval bool isArithmetic(const Instr &instr) {
          instr.m_mem == Member::_div_s || instr.m_mem == Member::_ne ||
          instr.m_mem == Member::_shr_s || instr.m_mem == Member::_gt_s ||
          instr.m_mem == Member::_gt_u || instr.m_mem == Member::_eq ||
-         instr.m_mem == Member::_xor || instr.m_mem == Member::_trunc_f32_s ||
+         instr.m_mem == Member::_xor || instr.m_mem == Member::_or ||
+         instr.m_mem == Member::_trunc_f32_s ||
          instr.m_mem == Member::_trunc_f64_s ||
          instr.m_mem == Member::_extend_i32_s ||
          instr.m_mem == Member::_wrap_i64;
@@ -343,6 +344,7 @@ consteval bool isArithmetic(const Instr &instr) {
 
 consteval bool isArithmeticDecimal(const Instr &instr) {
   return instr.m_mem == Member::_add || instr.m_mem == Member::_sub ||
+         instr.m_mem == Member::_div || instr.m_mem == Member::_ge ||
          instr.m_mem == Member::_mul || instr.m_mem == Member::_eqz ||
          instr.m_mem == Member::_ne || instr.m_mem == Member::_eq ||
          instr.m_mem == Member::_abs || instr.m_mem == Member::_lt ||
@@ -417,6 +419,8 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
       result = std::get<T1>(a.m_data) == std::get<T1>(b.m_data);
     } else if (instr.m_mem == Member::_xor) {
       result = std::get<T1>(a.m_data) ^ std::get<T1>(b.m_data);
+    } else if (instr.m_mem == Member::_or) {
+      result = std::get<T1>(a.m_data) | std::get<T1>(b.m_data);
     } else if (instr.m_mem == Member::_trunc_f32_s) {
       result = static_cast<T1>(std::get<float>(b.m_data));
     } else if (instr.m_mem == Member::_trunc_f64_s) {
@@ -507,6 +511,8 @@ consteval STATUS HandleF(State &state, const Instr &instr) {
       result = std::get<T1>(a.m_data) - std::get<T1>(b.m_data);
     } else if (instr.m_mem == Member::_mul) {
       result = std::get<T1>(a.m_data) * std::get<T1>(b.m_data);
+    } else if (instr.m_mem == Member::_div) {
+      result = std::get<T1>(a.m_data) / std::get<T1>(b.m_data);
     } else if (instr.m_mem == Member::_eqz) {
       result = (std::get<T1>(b.m_data) == 0) ? 1 : 0;
       isAssert = true;
@@ -521,6 +527,9 @@ consteval STATUS HandleF(State &state, const Instr &instr) {
                                            : -std::get<T1>(b.m_data);
     } else if (instr.m_mem == Member::_lt) {
       result = std::get<T1>(a.m_data) < std::get<T1>(b.m_data);
+      isAssert = true;
+    } else if (instr.m_mem == Member::_ge) {
+      result = std::get<T1>(a.m_data) >= std::get<T1>(b.m_data);
       isAssert = true;
     } else if (instr.m_mem == Member::_convert_i32_s) {
       result = static_cast<T1>(std::get<int32_t>(b.m_data));

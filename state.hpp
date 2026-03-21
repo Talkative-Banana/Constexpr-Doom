@@ -1,5 +1,5 @@
 #pragma once
-#include "program.hpp"
+#include "./test/program.hpp"
 #include "types.hpp"
 #include <array>
 #include <string_view>
@@ -21,10 +21,10 @@ struct Function {
   std::array<ParamType, MAXNUMPARAMS> m_params{};
   uint32_t m_paramCount = 0;
 
-  std::array<ParamType, 256> m_locals{};
+  std::array<ParamType, 8192> m_locals{};
   uint32_t m_localCount = 0;
 
-  std::array<Instr, 256> m_body{};
+  std::array<Instr, 8192> m_body{};
   uint32_t m_bodyCount = 0;
 
   std::array<uint32_t, BLOCKSTACKSIZE> m_blockStack{};
