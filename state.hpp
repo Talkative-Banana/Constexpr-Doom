@@ -98,11 +98,16 @@ struct Heap {};
 
 struct Module {};
 
+struct FrameBuffer {
+  std::array<char, SCREENWIDTH * SCREENHEIGHT> m_data;
+};
+
 struct State {
   Stack m_stack{};
   Stack m_opStack{};
   Global m_global{};
   Memory m_memory{};
+  FrameBuffer m_frameBuffer{};
   uint64_t m_instrPointer = 0;
   FunctionTable m_functionTable{};
   VirtualTable m_virtualTable{};

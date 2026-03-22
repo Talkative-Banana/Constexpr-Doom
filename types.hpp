@@ -161,6 +161,7 @@ enum class Member {
   _div_s,
   _div_u,
   _rem_s,
+  _rem_u,
   _and,
   _or,
   _xor,
@@ -199,6 +200,7 @@ enum class Member {
   _store,
   _load,
   _load8_u,
+  _load8_s,
   _load16_u,
   _load16_s,
   _store8,
@@ -384,6 +386,8 @@ struct Instr {
       m_mem = Member::_get;
     } else if (_mem == "set") {
       m_mem = Member::_set;
+    } else if (_mem == "tee") {
+      m_mem = Member::_tee;
     } else if (_mem == "const") {
       m_mem = Member::_const;
     } else if (_mem == "add") {
@@ -418,6 +422,8 @@ struct Instr {
       m_mem = Member::_or;
     } else if (_mem == "rem_s") {
       m_mem = Member::_rem_s;
+    } else if (_mem == "rem_u") {
+      m_mem = Member::_rem_u;
     } else if (_mem == "shl") {
       m_mem = Member::_shl;
     } else if (_mem == "div_s") {
@@ -432,6 +438,9 @@ struct Instr {
       m_mem = Member::_shr_u;
     } else if (_mem == "load8_u") {
       m_mem = Member::_load8_u;
+      is_LoadStore = true;
+    } else if (_mem == "load8_s") {
+      m_mem = Member::_load8_s;
       is_LoadStore = true;
     } else if (_mem == "load16_u") {
       m_mem = Member::_load16_u;

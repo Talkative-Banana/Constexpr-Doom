@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <string_view>
 
-inline consteval std::pair<uint32_t, std::array<Span, MAXMODULES>>
+inline constexpr std::pair<uint32_t, std::array<Span, MAXMODULES>>
 ParseProgram(std::string_view module) {
   std::array<Span, MAXMODULES> modules{};
   uint32_t start = 0, count = 0, open = 0;
@@ -44,8 +44,31 @@ ParseProgram(std::string_view module) {
   return {count, modules};
 }
 
+inline constexpr std::pair<uint32_t, std::array<Span, MAXMODULES>>
+ParseProgramNoCheck(std::string_view module) {
+  std::array<Span, MAXMODULES> modules{};
+  uint32_t start = 0;
+
+  for (uint32_t i = 0; i < module.size(); i++) {
+    char c = module[i];
+    if (c == '(') {
+      start = i;
+      break;
+    }
+  }
+
+  for (uint32_t i = module.size() - 1; i-- > 0;) {
+    char c = module[i];
+    if (c == ')') {
+      modules[0] = {start + 7, i};
+      break;
+    }
+  }
+  return {1, modules};
+}
+
 // ----- MODULE PARSER -----
-inline consteval uint32_t
+inline constexpr uint32_t
 ParseModuleItems(std::string_view module,
                  std::array<Span, MAXCHILDREN> &items) {
   uint32_t open = 0, start = 0, count = 0;
@@ -80,7 +103,7 @@ ParseModuleItems(std::string_view module,
 }
 
 // ----- MODULE VALIDATOR -----
-inline consteval uint32_t ParseModule(std::string_view module,
+inline constexpr uint32_t ParseModule(std::string_view module,
                                       std::array<Span, MAXCHILDREN> &items) {
   uint32_t count = ParseModuleItems(module, items);
   for (uint32_t i = 0; i < count; ++i) {
@@ -97,7 +120,7 @@ inline consteval uint32_t ParseModule(std::string_view module,
   return count;
 }
 
-consteval std::pair<std::string_view, std::string_view>
+constexpr std::pair<std::string_view, std::string_view>
 split2(std::string_view s, char delimiter = ' ') {
   size_t pos = s.find(delimiter);
   if (pos == std::string_view::npos)
@@ -106,13 +129,13 @@ split2(std::string_view s, char delimiter = ' ') {
   return {s.substr(0, pos), s.substr(pos + 1)};
 }
 
-consteval Instr ParseInstruction(std::string_view line) {
+constexpr Instr ParseInstruction(std::string_view line) {
   auto [op, rest] = split2(line);
   Instr instr{op, rest};
   return instr;
 }
 
-consteval Function ParseFunction(std::string_view func) {
+constexpr Function ParseFunction(std::string_view func) {
   Function f{};
 
   // ------------------------------------------------
@@ -307,7 +330,7 @@ consteval Function ParseFunction(std::string_view func) {
   return f;
 }
 
-consteval Instr ParseGlobalEntry(std::string_view entry) {
+constexpr Instr ParseGlobalEntry(std::string_view entry) {
   Instr instr{};
 
   // ------------------------------------------------
@@ -395,7 +418,7 @@ consteval Instr ParseGlobalEntry(std::string_view entry) {
   return instr;
 }
 
-consteval STATUS ParseDataEntry(std::string_view entry, Memory &memory) {
+constexpr STATUS ParseDataEntry(std::string_view entry, Memory &memory) {
 
   // ------------------------------------------------
   // ADDRESS — find (i32.const 1024)
@@ -459,7 +482,7 @@ consteval STATUS ParseDataEntry(std::string_view entry, Memory &memory) {
   return STATUS::OK;
 }
 
-consteval STATUS ParseElemEntry(std::string_view entry, VirtualTable &vtable,
+constexpr STATUS ParseElemEntry(std::string_view entry, VirtualTable &vtable,
                                 FunctionTable &functionTable) {
   // ------------------------------------------------
   // BASE INDEX — find (i32.const N)
@@ -534,7 +557,7 @@ consteval STATUS ParseElemEntry(std::string_view entry, VirtualTable &vtable,
   return STATUS::OK;
 }
 // ----- MODULE BUILDER -----
-inline consteval uint32_t SetupModule(std::string_view child, State &state) {
+inline constexpr uint32_t SetupModule(std::string_view child, State &state) {
   WASMOP type = Identify(child);
   if (type == WASMOP::_func) {
     // Extract and set function

@@ -13,10 +13,12 @@ static constexpr int MAXPARTS = 4096;
 static constexpr int MAXFUNCTIONS = 4096;
 static constexpr int MAXVIRTUALTABLESIZE = 4096;
 
-static constexpr int STACKSIZE = 131072; // 128KB
+static constexpr int STACKSIZE = INT32_MAX;
 static constexpr int GLOBALSIZE = 1024;
 
-static constexpr int MEMORYSIZE = 131072 * 8;
+static constexpr int MEMORYSIZE = INT32_MAX;
+static constexpr int SCREENWIDTH = 320;
+static constexpr int SCREENHEIGHT = 280;
 
 static constexpr std::string_view CALL = "call";
 static constexpr std::string_view MAIN = "$main";

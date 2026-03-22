@@ -96,7 +96,7 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   return STATUS::OK;
 }
 
-consteval STATUS HandleLocal(State &state, const Instr &instr) {
+constexpr STATUS HandleLocal(State &state, const Instr &instr) {
   Stack &stk = state.m_stack;
   Stack &op_stk = state.m_opStack;
 
@@ -109,6 +109,10 @@ consteval STATUS HandleLocal(State &state, const Instr &instr) {
   if (instr.m_mem == Member::_get) {
     Data data = stk.m_data[address];
     op_stk.Push(data);
+  } else if (instr.m_mem == Member::_tee) {
+    Data data = op_stk.Pop();
+    stk.m_data[address] = data;
+    op_stk.Push(data);
   } else {
     Data data = op_stk.Pop();
     stk.m_data[address] = data;
@@ -117,7 +121,7 @@ consteval STATUS HandleLocal(State &state, const Instr &instr) {
   return STATUS::OK;
 }
 
-consteval STATUS HandleGlobal(State &state, const Instr &instr) {
+constexpr STATUS HandleGlobal(State &state, const Instr &instr) {
   Global &global = state.m_global;
   Stack &op_stk = state.m_opStack;
 
@@ -143,7 +147,7 @@ consteval STATUS HandleGlobal(State &state, const Instr &instr) {
   return STATUS::OK;
 }
 
-consteval STATUS HandleSelect(State &state) {
+constexpr STATUS HandleSelect(State &state) {
   Stack &op_stk = state.m_opStack;
 
   Data cond = op_stk.Pop();
@@ -158,7 +162,7 @@ consteval STATUS HandleSelect(State &state) {
   return STATUS::OK;
 }
 
-consteval STATUS HandleReturn(State &state) {
+constexpr STATUS HandleReturn(State &state) {
   // Move the stack pointer back to the base pointer
   Stack &stk = state.m_stack;
   stk.m_stackPointer = stk.m_basePointer;
@@ -187,7 +191,7 @@ consteval STATUS HandleReturn(State &state) {
   return STATUS::OK;
 }
 
-consteval STATUS HandleBlock(State &state) {
+constexpr STATUS HandleBlock(State &state) {
   Function *f = state.m_activeFunction;
   uint64_t instrPointer = state.m_instrPointer;
 
@@ -210,7 +214,7 @@ consteval STATUS HandleBlock(State &state) {
   return STATUS::OK;
 }
 
-consteval STATUS HandleBranch(State &state, Instr &instr) {
+constexpr STATUS HandleBranch(State &state, Instr &instr) {
   Function *f = state.m_activeFunction;
 
   // Number of blocks to remove
@@ -233,7 +237,7 @@ consteval STATUS HandleBranch(State &state, Instr &instr) {
   return STATUS::OK;
 }
 
-consteval STATUS HandleBrTable(State &state, const Instr &instr) {
+constexpr STATUS HandleBrTable(State &state, const Instr &instr) {
   // pop index
   Data idxData = state.m_opStack.Pop();
   int32_t idx = std::get<int32_t>(idxData.m_data);
@@ -257,7 +261,7 @@ consteval STATUS HandleBrTable(State &state, const Instr &instr) {
   return HandleBranch(state, newInstr);
 }
 
-consteval STATUS HandleBranchIf(State &state, Instr &instr) {
+constexpr STATUS HandleBranchIf(State &state, Instr &instr) {
   Function *f = state.m_activeFunction;
 
   Stack &opStack = state.m_opStack;
@@ -289,7 +293,7 @@ consteval STATUS HandleBranchIf(State &state, Instr &instr) {
   return STATUS::OK;
 }
 
-consteval STATUS HandleEnd(State &state) {
+constexpr STATUS HandleEnd(State &state) {
   Function *f = state.m_activeFunction;
 
   // Check if this end matches the block on top of the stack
@@ -305,12 +309,12 @@ consteval STATUS HandleEnd(State &state) {
   return STATUS::OK;
 }
 
-consteval STATUS HandleLoop(State &state) {
+constexpr STATUS HandleLoop(State &state) {
   // Loop is a special kind of block
   return HandleBlock(state);
 }
 
-consteval STATUS HandleCallIndirect(State &state) {
+constexpr STATUS HandleCallIndirect(State &state) {
   Stack &op_stk = state.m_opStack;
 
   // pop table index first
@@ -326,23 +330,23 @@ consteval STATUS HandleCallIndirect(State &state) {
   return HandleCall(state, f->m_name);
 }
 
-consteval bool isArithmetic(const Instr &instr) {
+constexpr bool isArithmetic(const Instr &instr) {
   return instr.m_mem == Member::_add || instr.m_mem == Member::_sub ||
          instr.m_mem == Member::_mul || instr.m_mem == Member::_le_s ||
          instr.m_mem == Member::_ge_s || instr.m_mem == Member::_and ||
          instr.m_mem == Member::_eqz || instr.m_mem == Member::_lt_s ||
-         instr.m_mem == Member::_rem_s || instr.m_mem == Member::_shl ||
-         instr.m_mem == Member::_div_s || instr.m_mem == Member::_ne ||
-         instr.m_mem == Member::_shr_s || instr.m_mem == Member::_gt_s ||
-         instr.m_mem == Member::_gt_u || instr.m_mem == Member::_eq ||
-         instr.m_mem == Member::_xor || instr.m_mem == Member::_or ||
-         instr.m_mem == Member::_trunc_f32_s ||
+         instr.m_mem == Member::_rem_s || instr.m_mem == Member::_rem_u ||
+         instr.m_mem == Member::_shl || instr.m_mem == Member::_div_s ||
+         instr.m_mem == Member::_ne || instr.m_mem == Member::_shr_s ||
+         instr.m_mem == Member::_gt_s || instr.m_mem == Member::_gt_u ||
+         instr.m_mem == Member::_eq || instr.m_mem == Member::_xor ||
+         instr.m_mem == Member::_or || instr.m_mem == Member::_trunc_f32_s ||
          instr.m_mem == Member::_trunc_f64_s ||
          instr.m_mem == Member::_extend_i32_s ||
          instr.m_mem == Member::_wrap_i64;
 }
 
-consteval bool isArithmeticDecimal(const Instr &instr) {
+constexpr bool isArithmeticDecimal(const Instr &instr) {
   return instr.m_mem == Member::_add || instr.m_mem == Member::_sub ||
          instr.m_mem == Member::_div || instr.m_mem == Member::_ge ||
          instr.m_mem == Member::_mul || instr.m_mem == Member::_eqz ||
@@ -354,7 +358,7 @@ consteval bool isArithmeticDecimal(const Instr &instr) {
          instr.m_mem == Member::_demote_f64;
 }
 
-consteval bool isSingleOperand(const Instr &instr) {
+constexpr bool isSingleOperand(const Instr &instr) {
   return instr.m_mem == Member::_eqz || instr.m_mem == Member::_abs ||
          instr.m_mem == Member::_trunc_f32_s ||
          instr.m_mem == Member::_trunc_f64_s ||
@@ -367,7 +371,7 @@ consteval bool isSingleOperand(const Instr &instr) {
 }
 
 template <typename T1>
-consteval STATUS HandleI(State &state, const Instr &instr) {
+constexpr STATUS HandleI(State &state, const Instr &instr) {
   Stack &op_stk = state.m_opStack;
   Memory &memory = state.m_memory;
   if (instr.m_mem == Member::_const) {
@@ -398,7 +402,18 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
     } else if (instr.m_mem == Member::_lt_s) {
       result = std::get<T1>(a.m_data) < std::get<T1>(b.m_data);
     } else if (instr.m_mem == Member::_rem_s) {
+      if (std::get<T1>(b.m_data) == 0) {
+        throw "rem_s: division by zero";
+      }
       result = std::get<T1>(a.m_data) % std::get<T1>(b.m_data);
+    } else if (instr.m_mem == Member::_rem_u) {
+      using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
+      UT ua = static_cast<UT>(std::get<T1>(a.m_data));
+      UT ub = static_cast<UT>(std::get<T1>(b.m_data));
+      if (ub == 0) {
+        throw "rem_u: division by zero";
+      }
+      result = static_cast<T1>(ua % ub);
     } else if (instr.m_mem == Member::_shl) {
       result = std::get<T1>(a.m_data) << std::get<T1>(b.m_data);
     } else if (instr.m_mem == Member::_div_s) {
@@ -439,6 +454,11 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
     return STATUS::OK;
   } else if ((instr.m_mem == Member::_load) ||
              (instr.m_mem == Member::_load8_u) ||
+             (instr.m_mem == Member::_load8_s) ||
+             (instr.m_mem == Member::_load16_u) ||
+             (instr.m_mem == Member::_load16_s) ||
+             (instr.m_mem == Member::_store8) ||
+             (instr.m_mem == Member::_store16) ||
              (instr.m_mem == Member::_store)) {
 
     int32_t offset = instr.m_operandValue;
@@ -446,6 +466,12 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
       Data base = op_stk.Pop();
       int32_t addr = std::get<int32_t>(base.m_data);
       // Address are always 32 bit
+      if (addr < 0) {
+        throw "Invalid base ptr in load";
+      }
+      if (offset < 0) {
+        throw "Invalid offset in load";
+      }
       if (addr + offset >= MEMORYSIZE) {
         throw "Invalid memory access in ixx.load";
       }
@@ -459,23 +485,107 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
       op_stk.Push(data);
     } else if (instr.m_mem == Member::_load8_u) {
       Data base = op_stk.Pop();
-      if (std::get<T1>(base.m_data) + offset >= MEMORYSIZE) {
+      int32_t addr = std::get<int32_t>(base.m_data);
+      if (addr < 0) {
+        throw "Invalid base ptr in load8_u";
+      }
+      if (offset < 0) {
+        throw "Invalid offset in load8_u";
+      }
+      if (addr + offset >= MEMORYSIZE) {
         throw "Invalid memory access in i32.load";
       }
-      int8_t val{};
-      val |=
-          static_cast<int>(memory.m_data[std::get<T1>(base.m_data) + offset]);
+      uint8_t val = memory.m_data[addr + offset];
       Data data;
       data.m_data = static_cast<T1>(val);
       op_stk.Push(data);
-    } else if (instr.m_mem == Member::_store) {
+    } else if (instr.m_mem == Member::_load8_s) {
+      Data base = op_stk.Pop();
+      int32_t addr = std::get<int32_t>(base.m_data);
+      if (addr < 0) {
+        throw "Invalid base ptr in load8_s";
+      }
+
+      if (offset < 0) {
+        throw "Invalid offset in load8_s";
+      }
+      if (addr + offset >= MEMORYSIZE) {
+        throw "Invalid memory access in i32.load";
+      }
+      int8_t val = static_cast<int8_t>(memory.m_data[addr + offset]);
+      Data data;
+      data.m_data = static_cast<T1>(val);
+      op_stk.Push(data);
+    } else if (instr.m_mem == Member::_load16_u) {
+      Data base = op_stk.Pop();
+      int32_t addr = std::get<int32_t>(base.m_data);
+      if (addr < 0) {
+        throw "Invalid base ptr in load16_u";
+      }
+
+      if (offset < 0) {
+        throw "Invalid offset in load16_u";
+      }
+      if (addr + offset >= MEMORYSIZE) {
+        throw "Invalid memory access in ixx.load16_u";
+      }
+      uint16_t val{};
+      for (size_t i = 0; i < sizeof(uint16_t); i++) {
+        val |= static_cast<uint16_t>(memory.m_data[addr + offset + i])
+               << (i * 8);
+      }
+      Data data;
+      data.m_data = static_cast<T1>(val);
+      op_stk.Push(data);
+    } else if (instr.m_mem == Member::_load16_s) {
+      Data base = op_stk.Pop();
+      int32_t addr = std::get<int32_t>(base.m_data);
+      if (addr < 0) {
+        throw "Invalid base ptr in load16_s";
+      }
+
+      if (offset < 0) {
+        throw "Invalid offset in load16_s";
+      }
+      if (addr + offset >= MEMORYSIZE) {
+        throw "Invalid memory access in i32.load";
+      }
+      int16_t val{};
+      for (size_t i = 0; i < sizeof(int16_t); i++) {
+        val |= static_cast<int16_t>(memory.m_data[addr + offset + i])
+               << (i * 8);
+      }
+      Data data;
+      data.m_data = static_cast<T1>(val);
+      op_stk.Push(data);
+    } else if (instr.m_mem == Member::_store ||
+               instr.m_mem == Member::_store8 ||
+               instr.m_mem == Member::_store16) {
       Data val = op_stk.Pop();
       Data base = op_stk.Pop();
       int32_t addr = std::get<int32_t>(base.m_data);
+      if (addr < 0) {
+        throw "Invalid base ptr in store/store8/store16";
+      }
+
+      if (offset < 0) {
+        throw "Invalid offset in store/store8/store16";
+      }
+
       if (addr + offset >= MEMORYSIZE) {
         throw "Invalid memory access in ixx.store";
       }
-      for (size_t i = 0; i < sizeof(T1); i++) {
+
+      size_t bytes;
+      if (instr.m_mem == Member::_store8) {
+        bytes = 1;
+      } else if (instr.m_mem == Member::_store16) {
+        bytes = 2;
+      } else {
+        bytes = sizeof(T1);
+      }
+
+      for (size_t i = 0; i < bytes; i++) {
         memory.m_data[addr + offset + i] =
             static_cast<uint8_t>((std::get<T1>(val.m_data) >> (i * 8)) & 0xFF);
       }
@@ -488,7 +598,7 @@ consteval STATUS HandleI(State &state, const Instr &instr) {
 }
 
 template <typename T1>
-consteval STATUS HandleF(State &state, const Instr &instr) {
+constexpr STATUS HandleF(State &state, const Instr &instr) {
   Stack &op_stk = state.m_opStack;
   Memory &memory = state.m_memory;
   if (instr.m_mem == Member::_const) {
@@ -559,6 +669,13 @@ consteval STATUS HandleF(State &state, const Instr &instr) {
       Data base = op_stk.Pop();
       int32_t addr = std::get<int32_t>(base.m_data);
       // Address are always 32 bit
+      if (addr < 0) {
+        throw "Invalid base ptr in load F";
+      }
+
+      if (offset < 0) {
+        throw "Invalid offset in load F";
+      }
       if (addr + offset >= MEMORYSIZE) {
         throw "Invalid memory access in fxx.load";
       }
@@ -577,6 +694,13 @@ consteval STATUS HandleF(State &state, const Instr &instr) {
       Data val = op_stk.Pop();
       Data base = op_stk.Pop();
       int32_t addr = std::get<int32_t>(base.m_data);
+      if (addr < 0) {
+        throw "Invalid base ptr in store F";
+      }
+
+      if (offset < 0) {
+        throw "Invalid offset in store F";
+      }
       if (addr + offset >= MEMORYSIZE) {
         throw "Invalid memory access in fxx.store";
       }

@@ -1,27 +1,28 @@
-# ----------------------
-# Makefile for ctwr
-# ----------------------
-
 CXX := g++-12
-CXXFLAGS := -c -std=c++20 -O2 -Wall -Wextra -I. -fconstexpr-ops-limit=2147483648 -fconstexpr-loop-limit=2147483647
-LDFLAGS := 
+
+ifdef RUNTIME_MODE
+    CXXFLAGS := -std=c++20 -g -Wall -Wextra -I. -fconstexpr-ops-limit=2147483648 -fconstexpr-loop-limit=2147483647
+else
+    CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I. -fconstexpr-ops-limit=2147483648 -fconstexpr-loop-limit=2147483647
+endif
+
+COMPILE_FLAGS := -c $(CXXFLAGS)
+
+ifdef RUNTIME_MODE
+	CXXFLAGS += -DRUNTIME_MODE
+endif
 
 TARGET := ctwr
-SRC := main.cpp parser.hpp state.hpp types.hpp constants.hpp handler.hpp runner.hpp program.hpp
 OBJ := main.o
 
-# Default target
 all: $(TARGET)
 
-# Build executable
 $(TARGET): $(OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CXX) -o $@ $^ $(LDFLAGS)
 
-# Compile main.cpp to object
-main.o: main.cpp parser.hpp state.hpp types.hpp constants.hpp handler.hpp runner.hpp test/program.hpp
-	$(CXX) $(CXXFLAGS) -c main.cpp -o main.o
+main.o: main.cpp parser.hpp state.hpp types.hpp constants.hpp handler.hpp runner.hpp inspect.hpp test/program.hpp
+	$(CXX) $(COMPILE_FLAGS) main.cpp -o main.o
 
-# Clean object files and executable
 clean:
 	rm -f $(OBJ) $(TARGET)
 

@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <string_view>
 
-consteval STATUS loop(State &state) {
+constexpr STATUS loop(State &state) {
   // holy loop batman
   while (1) {
     if (state.m_activeFunction == nullptr) {
@@ -171,7 +171,7 @@ consteval STATUS loop(State &state) {
   return STATUS::OK;
 }
 
-inline consteval STATUS Run() {
+inline constexpr auto RunAndGetOutput() {
   State state{};
   auto res = ParseProgram(program);
   int m_count = res.first;
@@ -242,5 +242,79 @@ inline consteval STATUS Run() {
   if (std::get<int32_t>(returnValue.m_data) != 0) {
     throw "Invalid return value from main!";
   }
-  return STATUS::OK;
+  return state.m_frameBuffer.m_data;
+}
+
+inline constexpr auto RunAndGetOutputNoCheck() {
+  State state{};
+  auto res = ParseProgramNoCheck(program);
+  int m_count = res.first;
+
+  if (m_count == 0)
+    throw "No module found";
+
+  if (m_count > MAXMODULES)
+    throw "Too many modules found";
+
+  // max MAXCHILDREN module children and MAXMODULES modules
+  // Validate Modules
+  std::array<std::array<Span, MAXCHILDREN>, MAXMODULES> items{};
+  std::array<int, MAXMODULES> itemCount{};
+  for (int moduleIdx = 0; moduleIdx < m_count; moduleIdx++) {
+    Span span = res.second[moduleIdx];
+    std::string_view module = program.substr(span.begin, span.end - span.begin);
+    uint32_t c_count = ParseModule(module, items[moduleIdx]);
+
+    if (c_count > MAXCHILDREN) {
+      throw "Too many children found";
+    }
+    itemCount[moduleIdx] = c_count;
+  }
+
+  // Setup Modules
+  for (int moduleIdx = 0; moduleIdx < m_count; moduleIdx++) {
+    auto span = res.second[moduleIdx];
+    std::string_view module = program.substr(span.begin, span.end - span.begin);
+    for (int item = 0; item < itemCount[moduleIdx]; item++) {
+      auto moduleItem = items[moduleIdx][item];
+      std::string_view child =
+          module.substr(moduleItem.begin, moduleItem.end - moduleItem.begin);
+      int c_res = SetupModule(child, state);
+
+      if (c_res != 0) {
+        throw "Invalid child format";
+      }
+    }
+  }
+
+  Stack &op_stk = state.m_opStack;
+  Data zdata{};
+
+  // Parameters for added main
+  zdata.m_data.emplace<int32_t>(0);
+  op_stk.Push(zdata);
+  op_stk.Push(zdata);
+
+  STATUS setupCall = HandleCall(state, "$main");
+  if (setupCall != STATUS::OK) {
+    throw "setup call failed\n";
+  }
+
+  state.m_instrPointer = 0;
+  STATUS execRes = loop(state);
+
+  if (execRes != STATUS::OK) {
+    throw "Execution Failed!";
+  }
+
+  if (state.m_opStack.m_stackPointer != state.m_opStack.m_floorPointer + 1) {
+    throw "No return value from main!";
+  }
+
+  Data returnValue = state.m_opStack.Pop();
+
+  if (std::get<int32_t>(returnValue.m_data) != 0) {
+    throw "Invalid return value from main!";
+  }
+  return state.m_frameBuffer.m_data;
 }
