@@ -32,6 +32,7 @@ struct Function {
   std::array<Block, BLOCKSIZE> m_blockTable{};
   uint32_t m_blockStackPointer = BLOCKSTACKSIZE;
   uint32_t m_blockIdx = 0;
+  bool m_isDefined{false};
 
   constexpr Block &getBlock() { return m_blockTable[m_blockIdx++]; }
 

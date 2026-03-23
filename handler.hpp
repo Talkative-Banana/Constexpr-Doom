@@ -54,6 +54,10 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   int64_t h = static_cast<int64_t>(hash % MAXFUNCTIONS);
   Function &f = state.m_functionTable.m_data[h % MAXFUNCTIONS];
 
+  if (!f.m_isDefined) {
+    throw "function definition not found\n";
+  }
+
   // Push the function arguments
   uint32_t paramCount = f.m_paramCount;
   std::array<Data, LOCALINSTRSIZE> args{};

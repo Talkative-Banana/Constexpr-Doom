@@ -137,7 +137,7 @@ constexpr Instr ParseInstruction(std::string_view line) {
 
 constexpr Function ParseFunction(std::string_view func) {
   Function f{};
-
+  f.m_isDefined = true;
   // ------------------------------------------------
   // FUNC NAME
   // ------------------------------------------------
@@ -156,7 +156,8 @@ constexpr Function ParseFunction(std::string_view func) {
   // ------------------------------------------------
   // TYPE INDEX
   // ------------------------------------------------
-  auto type_pos = func.find("(type");
+  size_t p = pos;
+  auto type_pos = func.find("(type", pos);
   if (type_pos != std::string_view::npos) {
     type_pos += 5;
 
@@ -172,12 +173,12 @@ constexpr Function ParseFunction(std::string_view func) {
     }
 
     f.m_typeIndex = value;
+    p = type_pos;
   }
 
   // ------------------------------------------------
   // PARAMS
   // ------------------------------------------------
-  size_t p = 0;
 
   while ((p = func.find("(param", p)) != std::string_view::npos) {
     p += 6;
@@ -221,7 +222,6 @@ constexpr Function ParseFunction(std::string_view func) {
   // ------------------------------------------------
   // LOCALS
   // ------------------------------------------------
-  p = 0;
 
   while ((p = func.find("(local", p)) != std::string_view::npos) {
     p += 6;
@@ -265,7 +265,7 @@ constexpr Function ParseFunction(std::string_view func) {
   // ------------------------------------------------
   // BODY START
   // ------------------------------------------------
-  size_t body_start = func.find(')', func.find("(func"));
+  size_t body_start = func.find(')', pos);
   if (body_start == std::string_view::npos)
     throw "Malformed func";
 
@@ -416,6 +416,55 @@ constexpr Instr ParseGlobalEntry(std::string_view entry) {
   }
 
   return instr;
+}
+
+constexpr Function ParseImportEntry(std::string_view entry) {
+  Function func{};
+
+  // ------------------------------------------------
+  // MODULE NAME — skip "env" (or whatever module)
+  // ------------------------------------------------
+  size_t pos = entry.find('"');
+  if (pos == std::string_view::npos)
+    throw "Missing module name";
+  size_t end = entry.find('"', pos + 1);
+  if (end == std::string_view::npos)
+    throw "Malformed module name";
+  // module name = entry.substr(pos+1, end-pos-1)  — "env", skip it
+  pos = end + 1;
+
+  // ------------------------------------------------
+  // FUNCTION NAME — second quoted string
+  // ------------------------------------------------
+  pos = entry.find('"', pos);
+  if (pos == std::string_view::npos)
+    throw "Missing function name";
+  end = entry.find('"', pos + 1);
+  if (end == std::string_view::npos)
+    throw "Malformed function name";
+
+  func.m_name = entry.substr(pos + 1, end - pos - 1); // "I_NetCmd"
+  pos = end + 1;
+
+  // ------------------------------------------------
+  // TYPE INDEX
+  // ------------------------------------------------
+  size_t type_pos = entry.find("(type", pos);
+  if (type_pos != std::string_view::npos) {
+    type_pos += 5;
+    while (type_pos < entry.size() && entry[type_pos] == ' ')
+      type_pos++;
+
+    uint32_t value = 0;
+    while (type_pos < entry.size() && entry[type_pos] >= '0' &&
+           entry[type_pos] <= '9') {
+      value = value * 10 + (entry[type_pos] - '0');
+      type_pos++;
+    }
+    func.m_typeIndex = value;
+  }
+
+  return func;
 }
 
 constexpr STATUS ParseDataEntry(std::string_view entry, Memory &memory) {
@@ -603,6 +652,12 @@ inline constexpr uint32_t SetupModule(std::string_view child, State &state) {
     }
   } else if (type == WASMOP::_export) {
   } else if (type == WASMOP::_import) {
+    // Extract and set global
+    Function f = ParseImportEntry(child);
+    std::size_t hash = constexpr_hash(f.m_name);
+    int64_t h = static_cast<int64_t>(hash & 0x7fffffffffffffffULL);
+    state.m_functionTable.m_data[h % MAXFUNCTIONS] = f;
+    state.m_functionTable.m_count++;
   } else if (type == WASMOP::_data) {
     STATUS res = ParseDataEntry(child, state.m_memory);
     if (res != STATUS::OK) {
