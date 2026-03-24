@@ -1,6 +1,7 @@
 #pragma once
 #include "constants.hpp"
 #include "handler.hpp"
+#include "parsedState.hpp"
 #include <array>
 #include <cstdint>
 #include <string_view>
@@ -171,7 +172,7 @@ constexpr STATUS loop(State &state) {
   return STATUS::OK;
 }
 
-inline constexpr auto RunAndGetOutput() {
+inline constexpr auto ParseAndRun() {
   State state{};
   auto res = ParseProgram(program);
   int m_count = res.first;
@@ -198,6 +199,7 @@ inline constexpr auto RunAndGetOutput() {
   }
 
   // Setup Modules
+  size_t functionId = 0, globalId = 0;
   for (int moduleIdx = 0; moduleIdx < m_count; moduleIdx++) {
     auto span = res.second[moduleIdx];
     std::string_view module = program.substr(span.begin, span.end - span.begin);
@@ -205,7 +207,7 @@ inline constexpr auto RunAndGetOutput() {
       auto moduleItem = items[moduleIdx][item];
       std::string_view child =
           module.substr(moduleItem.begin, moduleItem.end - moduleItem.begin);
-      int c_res = SetupModule(child, state);
+      int c_res = SetupModule(child, state, functionId, globalId);
 
       if (c_res != 0) {
         throw "Invalid child format";
@@ -245,7 +247,7 @@ inline constexpr auto RunAndGetOutput() {
   return state.m_frameBuffer.m_data;
 }
 
-inline constexpr auto RunAndGetOutputNoCheck() {
+inline constexpr auto ParseAndRunNoCheck() {
   State state{};
   auto res = ParseProgramNoCheck(program);
   int m_count = res.first;
@@ -272,6 +274,7 @@ inline constexpr auto RunAndGetOutputNoCheck() {
   }
 
   // Setup Modules
+  size_t functionId = 0, globalId = 0;
   for (int moduleIdx = 0; moduleIdx < m_count; moduleIdx++) {
     auto span = res.second[moduleIdx];
     std::string_view module = program.substr(span.begin, span.end - span.begin);
@@ -279,12 +282,52 @@ inline constexpr auto RunAndGetOutputNoCheck() {
       auto moduleItem = items[moduleIdx][item];
       std::string_view child =
           module.substr(moduleItem.begin, moduleItem.end - moduleItem.begin);
-      int c_res = SetupModule(child, state);
+      int c_res = SetupModule(child, state, functionId, globalId);
 
       if (c_res != 0) {
         throw "Invalid child format";
       }
     }
+  }
+
+  Stack &op_stk = state.m_opStack;
+  Data zdata{};
+
+  // Parameters for added main
+  zdata.m_data.emplace<int32_t>(0);
+  op_stk.Push(zdata);
+  op_stk.Push(zdata);
+
+  STATUS setupCall = HandleCall(state, "$main");
+  if (setupCall != STATUS::OK) {
+    throw "setup call failed\n";
+  }
+
+  state.m_instrPointer = 0;
+  STATUS execRes = loop(state);
+
+  if (execRes != STATUS::OK) {
+    throw "Execution Failed!";
+  }
+
+  if (state.m_opStack.m_stackPointer != state.m_opStack.m_floorPointer + 1) {
+    throw "No return value from main!";
+  }
+
+  Data returnValue = state.m_opStack.Pop();
+
+  if (std::get<int32_t>(returnValue.m_data) != 0) {
+    throw "Invalid return value from main!";
+  }
+  return state.m_frameBuffer.m_data;
+}
+
+inline constexpr auto RunNoCheck() {
+  State state{};
+  int res = make_state(state);
+
+  if (res != 0) {
+    throw "Something went wrong while setting up state.";
   }
 
   Stack &op_stk = state.m_opStack;

@@ -9,13 +9,28 @@
 #include <cstdint>
 #include <string_view>
 
-constexpr std::size_t constexpr_hash(std::string_view str) {
-  std::size_t hash = 14695981039346656037ull; // FNV offset basis
-  for (char c : str) {
-    hash ^= static_cast<std::size_t>(c);
-    hash *= 1099511628211ull; // FNV prime
+constexpr std::size_t getFunctionId(State &state, std::string_view str) {
+  FunctionTable &funcTable = state.m_functionTable;
+
+  for (int i = 0; i < funcTable.m_count; i++) {
+    Function &f = funcTable.m_data[i];
+    if (f.m_name == str) {
+      return i;
+    }
   }
-  return hash;
+  return 0;
+}
+
+constexpr std::size_t getOperandId(State &state, std::string_view str) {
+  Global &global = state.m_global;
+
+  for (int i = 0; i < global.m_count; i++) {
+    Data &data = global.m_data[i];
+    if (data.m_strId == str) {
+      return i;
+    }
+  }
+  return 0;
 }
 
 constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
@@ -23,9 +38,9 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   Stack &op_stk = state.m_opStack;
   // Get the function pointer and return address from the stack if exists
   if (state.m_activeFunction != nullptr) {
-    std::size_t hash = constexpr_hash(state.m_activeFunction->m_name);
+    std::size_t funcId = getFunctionId(state, state.m_activeFunction->m_name);
     Data fPtr;
-    fPtr.m_data = static_cast<int32_t>(hash % MAXFUNCTIONS);
+    fPtr.m_data = static_cast<int32_t>(funcId);
     // Push function address to return to after function call
     stk.Push(fPtr);
   } else {
@@ -50,12 +65,14 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
 
   // get hash of the function name and use it to get the function type and
   // argument count
-  size_t hash = constexpr_hash(funcName);
-  int64_t h = static_cast<int64_t>(hash % MAXFUNCTIONS);
-  Function &f = state.m_functionTable.m_data[h % MAXFUNCTIONS];
+  size_t funcId = getFunctionId(state, funcName);
+  Function &f = state.m_functionTable.m_data[funcId];
 
   if (!f.m_isDefined) {
     throw "function definition not found\n";
+  }
+  if (funcId == 172) {
+    throw "fahhhh\n";
   }
 
   // Push the function arguments
@@ -138,14 +155,13 @@ constexpr STATUS HandleGlobal(State &state, const Instr &instr) {
 
   // get hash of the function name and use it to get the function type and
   // argument count
-  size_t hash = constexpr_hash(operand);
-  int64_t h = static_cast<int64_t>(hash % GLOBALSIZE);
+  size_t id = getOperandId(state, operand);
   if (instr.m_mem == Member::_get) {
-    Data newData = global.m_data[h];
+    Data newData = global.m_data[id];
     op_stk.Push(newData);
   } else {
     Data data = op_stk.Pop();
-    global.m_data[h] = data;
+    global.m_data[id] = data;
   }
   state.m_instrPointer++;
   return STATUS::OK;

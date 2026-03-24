@@ -9,11 +9,14 @@
 
 #ifdef RUNTIME_MODE
 int main() {
-  STATUS result = Run();
-  std::cout << static_cast<int>(result) << std::endl;
+  // auto finalBuffer = ParseAndRunNoCheck();
+  size_t hash = constexpr_hash("$getenv");
+  int64_t h = static_cast<int64_t>(hash % MAXFUNCTIONS);
+  std::cout << h << std::endl;
 }
 #else
-constexpr auto finalBuffer = RunAndGetOutputNoCheck();
+
+constexpr auto finalBuffer = RunNoCheck();
 constexpr std::string_view SV(finalBuffer.data(), finalBuffer.size());
 auto x = inspect<SV>();
 

@@ -420,6 +420,7 @@ constexpr Instr ParseGlobalEntry(std::string_view entry) {
 
 constexpr Function ParseImportEntry(std::string_view entry) {
   Function func{};
+  func.m_isDefined = false;
 
   // ------------------------------------------------
   // MODULE NAME — skip "env" (or whatever module)
@@ -531,7 +532,8 @@ constexpr STATUS ParseDataEntry(std::string_view entry, Memory &memory) {
   return STATUS::OK;
 }
 
-constexpr STATUS ParseElemEntry(std::string_view entry, VirtualTable &vtable,
+constexpr STATUS ParseElemEntry(State &state, std::string_view entry,
+                                VirtualTable &vtable,
                                 FunctionTable &functionTable) {
   // ------------------------------------------------
   // BASE INDEX — find (i32.const N)
@@ -589,8 +591,7 @@ constexpr STATUS ParseElemEntry(std::string_view entry, VirtualTable &vtable,
     std::string_view funcName = entry.substr(nameStart, pos - nameStart);
 
     // look up function in function table by hash
-    size_t hash = constexpr_hash(funcName);
-    int32_t idx = static_cast<int32_t>(hash % MAXFUNCTIONS);
+    size_t idx = getFunctionId(state, funcName);
     Function &f = functionTable.m_data[idx];
 
     // store in virtual table
@@ -606,14 +607,13 @@ constexpr STATUS ParseElemEntry(std::string_view entry, VirtualTable &vtable,
   return STATUS::OK;
 }
 // ----- MODULE BUILDER -----
-inline constexpr uint32_t SetupModule(std::string_view child, State &state) {
+inline constexpr uint32_t SetupModule(std::string_view child, State &state,
+                                      size_t functionId, size_t globalId) {
   WASMOP type = Identify(child);
   if (type == WASMOP::_func) {
     // Extract and set function
     Function f = ParseFunction(child);
-    std::size_t hash = constexpr_hash(f.m_name);
-    int64_t h = static_cast<int64_t>(hash & 0x7fffffffffffffffULL);
-    state.m_functionTable.m_data[h % MAXFUNCTIONS] = f;
+    state.m_functionTable.m_data[functionId++] = f;
     state.m_functionTable.m_count++;
   } else if (type == WASMOP::_type) {
   } else if (type == WASMOP::_table) {
@@ -621,10 +621,9 @@ inline constexpr uint32_t SetupModule(std::string_view child, State &state) {
   } else if (type == WASMOP::_global) {
     // Extract and set global
     Instr instr = ParseGlobalEntry(child);
-    std::size_t hash = constexpr_hash(instr.m_operand);
-    int64_t h = static_cast<int64_t>(hash % GLOBALSIZE);
 
     Data globalEntry;
+    globalEntry.m_strId = instr.m_operand;
     if (instr.m_op == OP::_i32) {
       globalEntry.m_data = static_cast<int32_t>(instr.m_operandValue);
     } else if (instr.m_op == OP::_i64) {
@@ -634,7 +633,7 @@ inline constexpr uint32_t SetupModule(std::string_view child, State &state) {
     } else {
       globalEntry.m_data = static_cast<double>(instr.m_operandValueDecimal);
     }
-    state.m_global.m_data[h % MAXFUNCTIONS] = globalEntry;
+    state.m_global.m_data[globalId++] = globalEntry;
     state.m_global.m_count++;
 
     if (instr.m_operand == "$__stack_pointer") {
@@ -654,9 +653,7 @@ inline constexpr uint32_t SetupModule(std::string_view child, State &state) {
   } else if (type == WASMOP::_import) {
     // Extract and set global
     Function f = ParseImportEntry(child);
-    std::size_t hash = constexpr_hash(f.m_name);
-    int64_t h = static_cast<int64_t>(hash & 0x7fffffffffffffffULL);
-    state.m_functionTable.m_data[h % MAXFUNCTIONS] = f;
+    state.m_functionTable.m_data[functionId++] = f;
     state.m_functionTable.m_count++;
   } else if (type == WASMOP::_data) {
     STATUS res = ParseDataEntry(child, state.m_memory);
@@ -664,8 +661,8 @@ inline constexpr uint32_t SetupModule(std::string_view child, State &state) {
       throw "data segemnet parse falied\n";
     }
   } else if (type == WASMOP::_elem) {
-    STATUS res =
-        ParseElemEntry(child, state.m_virtualTable, state.m_functionTable);
+    STATUS res = ParseElemEntry(state, child, state.m_virtualTable,
+                                state.m_functionTable);
     if (res != STATUS::OK) {
       throw "data segemnet parse falied\n";
     }
