@@ -180,18 +180,79 @@ def strip_comments(src: str) -> str:
         out.append(line[:idx] if idx != -1 else line)
     return "\n".join(out)
 
-def split_sexprs(src: str) -> list[str]:
-    results, depth, start, in_str = [], 0, 0, False
+def split_module_items(src: str):
+    items = []
+    depth = 0
+    start = None
+
+    in_string = False
+    escape = False
+
     for i, c in enumerate(src):
-        if c == '"' and (i == 0 or src[i-1] != '\\'): in_str = not in_str
-        if not in_str:
-            if c == '(':
-                if depth == 0: start = i
-                depth += 1
-            elif c == ')':
-                depth -= 1
-                if depth == 0: results.append(src[start:i+1])
-    return results
+
+        # --- handle string ---
+        if in_string:
+            if escape:
+                escape = False
+            elif c == '\\':
+                escape = True
+            elif c == '"':
+                in_string = False
+            continue
+
+        if c == '"':
+            in_string = True
+            continue
+
+        # --- handle parentheses ---
+        if c == '(':
+            if depth == 0:
+                start = i
+            depth += 1
+
+        elif c == ')':
+            depth -= 1
+            if depth == 0 and start is not None:
+                items.append(src[start:i+1])
+                start = None
+
+    return items
+
+def extract_module(src: str) -> str:
+    start = src.find("(module")
+    if start == -1:
+        raise ValueError("No (module) found")
+
+    depth = 0
+    in_string = False
+    escape = False
+
+    for i in range(start, len(src)):
+        c = src[i]
+
+        # --- string handling ---
+        if in_string:
+            if escape:
+                escape = False
+            elif c == '\\':
+                escape = True
+            elif c == '"':
+                in_string = False
+            continue
+
+        if c == '"':
+            in_string = True
+            continue
+
+        # --- parentheses ---
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            depth -= 1
+            if depth == 0:
+                return src[start:i+1]
+
+    raise ValueError("Unclosed (module)")
 
 def identify(block: str) -> WASMOP:
     s = block.lstrip()
@@ -404,7 +465,9 @@ def build_state(src: str) -> ParsedState:
             depth -= 1
             if depth == 0: body_end = i; break
 
-    for child in split_sexprs(src[body_start:body_end]):
+    module_src = extract_module(src)
+    inner = module_src[len("(module"): -1]
+    for child in split_module_items(inner):
         wtype = identify(child)
         if   wtype == WASMOP._func:
             fn = parse_function(child); state.functions[fn.name] = fn
@@ -417,7 +480,6 @@ def build_state(src: str) -> ParsedState:
             parse_data(child, state.memory)
         elif wtype == WASMOP._elem:
             state.vtable_entries += parse_elem(child)
-
     return state
 
 # ──────────────────────────────────────────────────────────────

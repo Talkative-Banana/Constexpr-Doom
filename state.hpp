@@ -523,15 +523,22 @@ struct Stack {
   std::array<Data, STACKSIZE> m_data{};
 };
 
-struct Heap {};
+struct GarbageCollector {
+  uint32_t m_gcPtr = 0;
+  std::array<uint32_t, GCSIZE> m_data{};
+};
 
-struct Module {};
+struct Heap {
+  uint32_t m_heapPtr = 0;
+  GarbageCollector m_garbageCollector{};
+};
 
 struct FrameBuffer {
   std::array<char, SCREENWIDTH * SCREENHEIGHT> m_data;
 };
 
 struct State {
+  Heap m_heap{};
   Stack m_stack{};
   Stack m_opStack{};
   Global m_global{};

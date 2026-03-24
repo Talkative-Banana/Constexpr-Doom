@@ -3,6 +3,7 @@
 #include "constants.hpp"
 #include "parser.hpp"
 #include "state.hpp"
+#include "syscall.hpp"
 #include "types.hpp"
 #include <array>
 #include <bit>
@@ -36,6 +37,20 @@ constexpr std::size_t getOperandId(State &state, std::string_view str) {
 constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   Stack &stk = state.m_stack;
   Stack &op_stk = state.m_opStack;
+
+  // get hash of the function name and use it to get the function type and
+  // argument count
+  size_t funcId = getFunctionId(state, funcName);
+  Function &f = state.m_functionTable.m_data[funcId];
+
+  if (!f.m_isDefined) {
+    if (isSystemCall(funcName)) {
+      return dispatchSysCall(state, funcName);
+    } else {
+      throw "function definition not found\n";
+    }
+  }
+
   // Get the function pointer and return address from the stack if exists
   if (state.m_activeFunction != nullptr) {
     std::size_t funcId = getFunctionId(state, state.m_activeFunction->m_name);
@@ -62,18 +77,6 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
 
   // Update the base pointer to the current stack pointer for the callee
   stk.m_basePointer = stk.m_stackPointer;
-
-  // get hash of the function name and use it to get the function type and
-  // argument count
-  size_t funcId = getFunctionId(state, funcName);
-  Function &f = state.m_functionTable.m_data[funcId];
-
-  if (!f.m_isDefined) {
-    throw "function definition not found\n";
-  }
-  if (funcId == 172) {
-    throw "fahhhh\n";
-  }
 
   // Push the function arguments
   uint32_t paramCount = f.m_paramCount;
