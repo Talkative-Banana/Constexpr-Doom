@@ -110,7 +110,9 @@ enum class ParamType {
 
 enum class STATUS {
   OK,
+  ISBAD,
   ERROR,
+  SYSFUNCERROR,
 };
 
 enum class Member {

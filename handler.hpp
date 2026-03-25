@@ -1,6 +1,7 @@
 
 #pragma once
 #include "constants.hpp"
+#include "implementation.hpp"
 #include "parser.hpp"
 #include "state.hpp"
 #include "syscall.hpp"
@@ -9,30 +10,6 @@
 #include <bit>
 #include <cstdint>
 #include <string_view>
-
-constexpr std::size_t getFunctionId(State &state, std::string_view str) {
-  FunctionTable &funcTable = state.m_functionTable;
-
-  for (int i = 0; i < funcTable.m_count; i++) {
-    Function &f = funcTable.m_data[i];
-    if (f.m_name == str) {
-      return i;
-    }
-  }
-  return 0;
-}
-
-constexpr std::size_t getOperandId(State &state, std::string_view str) {
-  Global &global = state.m_global;
-
-  for (int i = 0; i < global.m_count; i++) {
-    Data &data = global.m_data[i];
-    if (data.m_strId == str) {
-      return i;
-    }
-  }
-  return 0;
-}
 
 constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   Stack &stk = state.m_stack;
@@ -46,6 +23,8 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   if (!f.m_isDefined) {
     if (isSystemCall(funcName)) {
       return dispatchSysCall(state, funcName);
+    } else if (isImplementationCall(funcName)) {
+      return dispatchImplemCall(state, funcName);
     } else {
       throw "function definition not found\n";
     }

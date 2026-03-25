@@ -69,6 +69,12 @@ constexpr STATUS loop(State &state) {
       if (res == STATUS::ERROR) {
         throw "CALL Call Handling Failed!";
         return STATUS::ERROR;
+      } else if (res == STATUS::SYSFUNCERROR) {
+        throw "Error in platform implementation function";
+        return STATUS::ISBAD;
+      } else if (res == STATUS::ISBAD) {
+        throw "ISBAD is not working";
+        return STATUS::ISBAD;
       }
       break;
     }

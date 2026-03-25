@@ -4470,9 +4470,7 @@
     local.tee 0
     global.set $__stack_pointer
     i32.const 9714
-    nop
     call $getenv
-    nop
     local.tee 1
     i32.const 20690
     local.get 1
@@ -6281,6 +6279,7 @@
     drop
     i32.const 148960
     call $W_InitMultipleFiles
+    halt
     block  ;; label = @1
       i32.const 0
       i32.load offset=147800

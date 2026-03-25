@@ -534,6 +534,7 @@ struct Heap {
 };
 
 struct FrameBuffer {
+  uint32_t m_framePtr = 0;
   std::array<char, SCREENWIDTH * SCREENHEIGHT> m_data;
 };
 
@@ -549,3 +550,27 @@ struct State {
   VirtualTable m_virtualTable{};
   Function *m_activeFunction = nullptr;
 };
+
+constexpr std::size_t getFunctionId(State &state, std::string_view str) {
+  FunctionTable &funcTable = state.m_functionTable;
+
+  for (int i = 0; i < funcTable.m_count; i++) {
+    Function &f = funcTable.m_data[i];
+    if (f.m_name == str) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+constexpr std::size_t getOperandId(State &state, std::string_view str) {
+  Global &global = state.m_global;
+
+  for (int i = 0; i < global.m_count; i++) {
+    Data &data = global.m_data[i];
+    if (data.m_strId == str) {
+      return i;
+    }
+  }
+  return 0;
+}

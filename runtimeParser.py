@@ -93,15 +93,20 @@ class Instr:
     br_count:          int         = 0
 
 @dataclass
+class FuncType:
+    params:  list[ParamType] = field(default_factory=list)
+    results: list[ParamType] = field(default_factory=list)
+
+@dataclass
 class Function:
-    name:         str             = ""
-    type_index:   int             = 0
-    params:       list[ParamType] = field(default_factory=list)
-    locals:       list[ParamType] = field(default_factory=list)
-    body:         list[Instr]     = field(default_factory=list)
-    block_table:  list[Block]     = field(default_factory=list)
-    block_idx:    int             = 0   # == number of blocks seen (m_blockIdx)
-    is_defined:   bool            = False
+    name:          str             = ""
+    type_index:    int             = 0
+    params:        list[ParamType] = field(default_factory=list)
+    locals:        list[ParamType] = field(default_factory=list)
+    body:          list[Instr]     = field(default_factory=list)
+    block_table:   list[Block]     = field(default_factory=list)
+    block_idx:     int             = 0   # == number of blocks seen (m_blockIdx)
+    is_defined:    bool            = False
 
 @dataclass
 class GlobalEntry:
@@ -347,6 +352,21 @@ def parse_instruction(line: str) -> Instr:
 # ──────────────────────────────────────────────────────────────
 #  Section parsers
 # ──────────────────────────────────────────────────────────────
+def parse_type(src: str) -> FuncType:
+    ft = FuncType()
+    # find the inner (func ...) — may contain nested (param) and (result)
+    m = re.search(r'\(func(.*)\)', src, re.DOTALL)
+    if not m:
+        return ft
+    inner = m.group(1)
+    for pm in re.finditer(r'\(param([^)]*)\)', inner):
+        for t in pm.group(1).split():
+            if t in _TYPE_MAP: ft.params.append(_TYPE_MAP[t])
+    for rm in re.finditer(r'\(result([^)]*)\)', inner):
+        for t in rm.group(1).split():
+            if t in _TYPE_MAP: ft.results.append(_TYPE_MAP[t])
+    return ft
+
 def parse_function(src: str) -> Function:
     fn = Function(is_defined=True)
     m = re.match(r'\(func\s+(\$[^\s()]+)', src)
@@ -392,21 +412,25 @@ def parse_function(src: str) -> Function:
 
     return fn
 
-def parse_import(src: str) -> Function:
+def parse_import(src: str, type_table: dict[int, FuncType] = {}) -> Function:
     fn = Function(is_defined=False)
 
-    # Extract $name from (func $name ...)
+    # (import "env" "strlen" (func $strlen (type 3)))
+    strings = re.findall(r'"([^"]*)"', src)
+    if len(strings) >= 2:
+        fn.import_module = strings[0]   # "env"
+        fn.import_field  = strings[1]   # "strlen"
+
     m = re.search(r'\(func\s+(\$[^\s()]+)', src)
-    if m:
-        fn.name = m.group(1)
-    else:
-        # fallback (rare case)
-        strings = re.findall(r'"([^"]*)"', src)
-        if len(strings) >= 2:
-            fn.name = "$" + strings[1]   # at least keep consistency
+    fn.name = m.group(1) if m else ("$" + fn.import_field if fn.import_field else "$anon")
 
     m = re.search(r'\(type\s+(\d+)\)', src)
     fn.type_index = int(m.group(1)) if m else 0
+
+    # fill params from type table
+    if fn.type_index in type_table:
+        fn.params = list(type_table[fn.type_index].params)
+
     return fn
 
 def parse_global(src: str) -> GlobalEntry:
@@ -454,32 +478,34 @@ def parse_elem(src: str) -> list[tuple[int,str]]:
 def build_state(src: str) -> ParsedState:
     src = strip_comments(src)
     state = ParsedState()
-    mod_start = src.find("(module")
-    if mod_start == -1: raise ValueError("No (module) found")
-    depth, body_start, body_end = 0, mod_start, len(src)
-    for i in range(mod_start, len(src)):
-        if src[i] == '(':
-            if depth == 0: body_start = i+1
-            depth += 1
-        elif src[i] == ')':
-            depth -= 1
-            if depth == 0: body_end = i; break
 
     module_src = extract_module(src)
     inner = module_src[len("(module"): -1]
-    for child in split_module_items(inner):
+    children = split_module_items(inner)
+
+    # ── Pass 1: collect type table ─────────────────────────────
+    type_table: dict[int, FuncType] = {}
+    type_idx = 0
+    for child in children:
+        if identify(child) == WASMOP._type:
+            type_table[type_idx] = parse_type(child)
+            type_idx += 1
+
+    # ── Pass 2: everything else ────────────────────────────────
+    for child in children:
         wtype = identify(child)
         if   wtype == WASMOP._func:
-            fn = parse_function(child); state.functions[fn.name] = fn
+            fn = parse_function(child);          state.functions[fn.name] = fn
         elif wtype == WASMOP._import:
-            fn = parse_import(child);   state.functions[fn.name] = fn
+            fn = parse_import(child, type_table); state.functions[fn.name] = fn
         elif wtype == WASMOP._global:
-            g = parse_global(child);    state.globals[g.name] = g
-            if g.name == "$__stack_pointer": state.stack_pointer = int(g.value)
+            g = parse_global(child);             state.globals[g.name] = g
+            if g.name == "$__stack_pointer":     state.stack_pointer = int(g.value)
         elif wtype == WASMOP._data:
             parse_data(child, state.memory)
         elif wtype == WASMOP._elem:
             state.vtable_entries += parse_elem(child)
+
     return state
 
 # ──────────────────────────────────────────────────────────────
@@ -512,7 +538,6 @@ def emit_state(state: ParsedState, var: str = "state") -> str:
     w("#include <limits>")
     w("")
     w("inline constexpr int make_state(State& state) {")
-    # w(f"  State {var}{{}};")
     w("")
 
     # ── Functions ──────────────────────────────────────────────
@@ -525,17 +550,17 @@ def emit_state(state: ParsedState, var: str = "state") -> str:
         w(f"  // [{slot}] {fname!r}  (defined={fn.is_defined})")
         w(f"  {{")
         w(f"    auto& F = {ref};")
-        w(f"    F.m_name       = {q(fn.name)};")
-        w(f"    F.m_typeIndex  = {fn.type_index};")
-        w(f"    F.m_isDefined  = {'true' if fn.is_defined else 'false'};")
-        w(f"    F.m_paramCount = {len(fn.params)};")
+        w(f"    F.m_name          = {q(fn.name)};")
+        w(f"    F.m_typeIndex     = {fn.type_index};")
+        w(f"    F.m_isDefined     = {'true' if fn.is_defined else 'false'};")
+        w(f"    F.m_paramCount    = {len(fn.params)};")
         for i, p in enumerate(fn.params):
-            w(f"    F.m_params[{i}]  = {pt(p)};")
-        w(f"    F.m_localCount = {len(fn.locals)};")
+            w(f"    F.m_params[{i}]     = {pt(p)};")
+        w(f"    F.m_localCount    = {len(fn.locals)};")
         for i, l in enumerate(fn.locals):
-            w(f"    F.m_locals[{i}]  = {pt(l)};")
-        w(f"    F.m_bodyCount  = {len(fn.body)};")
-        w(f"    F.m_blockIdx   = {fn.block_idx};")
+            w(f"    F.m_locals[{i}]     = {pt(l)};")
+        w(f"    F.m_bodyCount     = {len(fn.body)};")
+        w(f"    F.m_blockIdx      = {fn.block_idx};")
         # instructions
         for ii, instr in enumerate(fn.body):
             r = f"F.m_body[{ii}]"
@@ -609,15 +634,17 @@ def emit_state(state: ParsedState, var: str = "state") -> str:
 
     if runs:
         w(f"  // ════ Memory ({sum(len(r) for _,r in runs)} non-zero bytes in {len(runs)} region(s)) ════")
+        finalOffset = 0
         for addr, chunk in runs:
-            # emit as 16-byte groups for readability
             for off in range(0, len(chunk), 16):
                 group = chunk[off:off+16]
+                finalOffset = addr + off + len(group)
                 assigns = "  ".join(
                     f"{var}.m_memory.m_data[{addr+off+k}] = 0x{b:02X};"
                     for k, b in enumerate(group))
                 w(f"  {assigns}")
         w("")
+        w(f"  {var}.m_heap.m_heapPtr = {finalOffset + 1};")
 
     # ── Virtual table ──────────────────────────────────────────
     if state.vtable_entries:

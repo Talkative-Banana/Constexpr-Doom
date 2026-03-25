@@ -20,7 +20,7 @@ all: $(TARGET)
 $(TARGET): $(OBJ)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
-main.o: main.cpp parser.hpp state.hpp types.hpp constants.hpp handler.hpp runner.hpp inspect.hpp test/program.hpp parsedState.hpp syscall.hpp
+main.o: main.cpp parser.hpp state.hpp types.hpp constants.hpp handler.hpp runner.hpp inspect.hpp test/program.hpp parsedState.hpp syscall.hpp implementation.hpp
 	$(CXX) $(COMPILE_FLAGS) main.cpp -o main.o
 
 clean:
