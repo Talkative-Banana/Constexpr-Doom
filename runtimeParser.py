@@ -650,7 +650,7 @@ def emit_state(state: ParsedState, var: str = "state") -> str:
     if state.vtable_entries:
         w(f"  // ════ Virtual Table ({len(state.vtable_entries)} entries) ════")
         for vtidx, fname in state.vtable_entries:
-            slot = fn_slot[fname]
+            slot = fn_slot[q(fname)]
             w(f"  {var}.m_virtualTable.m_data[{vtidx}]"
               f" = &{var}.m_functionTable.m_data[{slot}];  // {fname!r}")
         w("")

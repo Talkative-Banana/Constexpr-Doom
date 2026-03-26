@@ -26,7 +26,7 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
     } else if (isImplementationCall(funcName)) {
       return dispatchImplemCall(state, funcName);
     } else {
-      throw "function definition not found\n";
+      throw "function definition not found";
     }
   }
 

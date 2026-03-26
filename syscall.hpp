@@ -133,6 +133,7 @@ constexpr STATUS TOUPPER(State &state) {
 }
 // sprintf
 constexpr STATUS SPRINTF(State &state) {
+  // This is broken as of now
   Memory &memory = state.m_memory;
   Stack &op_stk = state.m_opStack;
 
@@ -144,6 +145,10 @@ constexpr STATUS SPRINTF(State &state) {
 
   // Number of varargs
   int vararg_count = count_format_args(memory, fmt_ptr);
+
+  if (vararg_count == 0) {
+    throw "No argument found searching at wrong place";
+  }
 
   constexpr int MAX_ARGS = 16;
   Data tmp[MAX_ARGS]{};
@@ -290,9 +295,38 @@ constexpr STATUS PRINTF(State &state) {
 }
 // fopen
 constexpr STATUS FOPEN(State &state) {
-  //   throw "syscall fopen not implemented\n";
+  // The fopen() function opens the file whose name is the string pointed to by
+  // pathname and associates a stream with it.
+  Memory &memory = state.m_memory;
+  Stack &op_stk = state.m_opStack;
+
+  // 1. Pop argument (pointer to key string)
+  std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t address = std::get<int32_t>(op_stk.Pop().m_data);
+
+  int idx = 0;
+  while (idx + address < MEMORYSIZE && memory.m_data[address + idx] != '\0') {
+    idx++;
+  }
+
+  std::array<char, LBUFF> buff = {0};
+  for (int i = 0; i < idx; i++) {
+    buff[i] = memory.m_data[address + i];
+  }
+
+  std::string_view fileName(buff.data(), idx);
+
+  int32_t filePtr = 0;
+  if (fileName == "waddump.txt") {
+    throw "ye konsi file hai.";
+  }
+
+  Data ret{};
+  ret.m_data = filePtr;
+  op_stk.Push(ret);
+
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::OK;
 }
 // malloc
 constexpr STATUS MALLOC(State &state) {
@@ -346,7 +380,7 @@ constexpr STATUS GETENV(State &state) {
     idx++;
   }
 
-  std::array<char, 4096> buff = {0};
+  std::array<char, LBUFF> buff = {0};
   for (int i = 0; i < idx; i++) {
     buff[i] = memory.m_data[key_ptr + i];
   }
@@ -383,19 +417,39 @@ constexpr STATUS GETENV(State &state) {
 constexpr STATUS ACCESS(State &state) {
   // access() checks whether the calling process can access the file pathname.
   // If pathname is a symbolic link, it is dereferenced.
-  // Memory &memory = state.m_memory;
+  Memory &memory = state.m_memory;
   Stack &op_stk = state.m_opStack;
 
   // 1. Pop argument (pointer to key string)
   std::get<int32_t>(op_stk.Pop().m_data);
-  std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t pathptr = std::get<int32_t>(op_stk.Pop().m_data);
 
-  // int32_t flags = std::get<int32_t>(op_stk.Pop().m_data);
-  // int32_t pathName = std::get<int32_t>(op_stk.Pop().m_data);
+  if (pathptr < 0 || pathptr >= MEMORYSIZE)
+    throw "Invalid memory pointer";
+
+  // 2. Read string from WASM memory
+  int idx = 0;
+  while (idx + pathptr < MEMORYSIZE && memory.m_data[pathptr + idx] != '\0') {
+    idx++;
+  }
+
+  std::array<char, LBUFF> buff = {0};
+  for (int i = 0; i < idx; i++) {
+    buff[i] = memory.m_data[pathptr + i];
+  }
+  std::string_view pathName(buff.data(), idx);
+
+  int32_t permission = 1;
+
+  if (pathName != "") {
+    throw "doom1.wad!";
+    // grant permisson
+    permission = 0;
+  }
 
   Data ret{};
   // Grant Permission => 0
-  ret.m_data = 1;
+  ret.m_data = permission;
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -417,7 +471,7 @@ constexpr STATUS PUTS(State &state) {
     idx++;
   }
 
-  std::array<char, 4096> buff = {0};
+  std::array<char, LBUFF> buff = {0};
   for (int i = 0; i < idx; i++) {
     buff[i] = memory.m_data[key_ptr + i];
     frameBuffer.m_data[frameBuffer.m_framePtr++] = memory.m_data[key_ptr + i];
@@ -460,9 +514,43 @@ constexpr STATUS FCLOSE(State &state) {
 }
 // calloc
 constexpr STATUS CALLOC(State &state) {
-  //   throw "syscall calloc not implemented\n";
+  // The  calloc()  function allocates memory for an array of nmemb
+  // elements of size bytes each and returns a pointer to the allocated
+  // memory.  The memory is set to zero.  If nmemb or size is 0, then
+  // calloc() returns either NULL, or a unique pointer value that can later be
+  // successfully passed to free().If the multiplication of nmemb and size would
+  // result in integer overflow, then calloc() returns an error.By contrast,
+  // an integer overflow would not be detected in the following call to
+  // malloc(), with the result that an incorrectly sized block of memory would
+  // be allocated.
+  Stack &op_stk = state.m_opStack;
+
+  // 1. Pop argument (size of memory to alloc)
+  int32_t size = std::get<int32_t>(op_stk.Pop().m_data);
+
+  // TODO: Fix this to get ptr dynamically
+  // 2. get a place to save result to
+  int32_t ptr = state.m_heap.m_heapPtr;
+
+  // Set to zero
+  for (int i = 0; i < size; i++) {
+    state.m_memory.m_data[i + ptr] = 0;
+  }
+
+  // 3. Increase the ptr
+  state.m_heap.m_heapPtr += size;
+
+  // 4. Push return value (pointer)
+  Data ret{};
+  if (size == 0) {
+    ret.m_data = int32_t{0};
+  } else {
+    ret.m_data = ptr;
+  }
+  op_stk.Push(ret);
+
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::OK;
 }
 // exit
 constexpr STATUS EXIT(State &state) {

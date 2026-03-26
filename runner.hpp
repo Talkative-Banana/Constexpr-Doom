@@ -73,7 +73,6 @@ constexpr STATUS loop(State &state) {
         throw "Error in platform implementation function";
         return STATUS::ISBAD;
       } else if (res == STATUS::ISBAD) {
-        throw "ISBAD is not working";
         return STATUS::ISBAD;
       }
       break;
@@ -351,6 +350,10 @@ inline constexpr auto RunNoCheck() {
 
   state.m_instrPointer = 0;
   STATUS execRes = loop(state);
+
+  if (execRes == STATUS::ISBAD) {
+    return state.m_frameBuffer.m_data;
+  }
 
   if (execRes != STATUS::OK) {
     throw "Execution Failed!";

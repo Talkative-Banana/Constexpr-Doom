@@ -1,5 +1,6 @@
 #pragma once
 #include "state.hpp"
+#include "syscall.hpp"
 #include "types.hpp"
 #include <array>
 #include <string_view>
@@ -21,7 +22,8 @@ constexpr bool isImplementationCall(std::string_view funcName) {
          funcName == "$I_GetSfxLumpNum" || funcName == "$I_StartSound" ||
          funcName == "$I_PauseSong" || funcName == "$I_ResumeSong" ||
          funcName == "$I_UpdateSoundParams" || funcName == "$I_StopSong" ||
-         funcName == "$I_UnRegisterSong" || funcName == "$I_ZoneBase";
+         funcName == "$I_UnRegisterSong" || funcName == "$I_ZoneBase" ||
+         funcName == "$I_Error";
 }
 // -------- Graphics --------
 constexpr STATUS I_READSCREEN(State &state) {
@@ -86,13 +88,35 @@ constexpr STATUS I_INIT(State &state) {
 }
 
 constexpr STATUS I_ALLOCLOW(State &state) {
-  state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  // Just a zero memory allocator
+  return CALLOC(state);
 }
 
 constexpr STATUS I_ZONEBASE(State &state) {
-  state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  // Update the value at ptr
+  Memory &memory = state.m_memory;
+  Stack &op_stk = state.m_opStack;
+
+  int32_t m_data = 6;
+
+  // 1. Pop argument
+  int32_t address = std::get<int32_t>(op_stk.Pop().m_data);
+
+  int32_t val = m_data * 1024 * 1024;
+
+  // 3. Write value as 4 bytes (little-endian) into memory
+  if (address >= 0 && address + 3 < MEMORYSIZE) {
+    memory.m_data[address + 0] = static_cast<uint8_t>((val >> 0) & 0xFF);
+    memory.m_data[address + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
+    memory.m_data[address + 2] = static_cast<uint8_t>((val >> 16) & 0xFF);
+    memory.m_data[address + 3] = static_cast<uint8_t>((val >> 24) & 0xFF);
+  }
+
+  Data data{};
+  data.m_data = val;
+  op_stk.Push(data);
+
+  return MALLOC(state);
 }
 
 constexpr STATUS I_NETCMD(State &state) {
@@ -183,6 +207,12 @@ constexpr STATUS I_UNREGISTERSONG(State &state) {
   return STATUS::SYSFUNCERROR;
 }
 
+constexpr STATUS I_ERROR(State &state) {
+  // Update the value at ptr
+  PUTS(state);
+  return STATUS::ISBAD;
+}
+
 constexpr STATUS dispatchImplemCall(State &state, std::string_view name) {
   // -------- Graphics --------
   if (name == "$I_ReadScreen")
@@ -259,6 +289,8 @@ constexpr STATUS dispatchImplemCall(State &state, std::string_view name) {
     return I_STOPSONG(state);
   else if (name == "$I_UnRegisterSong")
     return I_UNREGISTERSONG(state);
+  else if (name == "$I_Error")
+    return I_ERROR(state);
 
   throw "Unknow Implem call";
 }
