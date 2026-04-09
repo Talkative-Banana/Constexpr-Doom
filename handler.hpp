@@ -96,6 +96,9 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   // Update the active Function and instrunction Pointer
   state.m_activeFunction = &f;
   state.m_instrPointer = 0;
+
+  // Clear varg count for the new function
+  op_stk.m_vargCount = 0;
   return STATUS::OK;
 }
 

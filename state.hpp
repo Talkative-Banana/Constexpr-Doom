@@ -507,12 +507,14 @@ struct Stack {
   constexpr void Push(const Data &data) {
     if (m_stackPointer == STACKSIZE)
       throw "Stack overflow";
+    m_vargCount++;
     m_data[++m_stackPointer] = data;
   }
 
   constexpr Data Pop() {
     if (m_stackPointer == m_floorPointer)
       throw "Stack underflow";
+    m_vargCount--;
     return m_data[m_stackPointer--];
   }
 
@@ -520,6 +522,7 @@ struct Stack {
   uint64_t m_stackPointer = 0;
   uint64_t m_framePointer = 0;
   uint64_t m_floorPointer = 0;
+  uint64_t m_vargCount = 0;
   std::array<Data, STACKSIZE> m_data{};
 };
 

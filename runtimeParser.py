@@ -3,8 +3,8 @@ WAT Runtime Parser — emits a C++ make_state() function that
 directly initialises every field of your State struct.
 
 Usage:
-    python wat_parser.py test.wat             # prints to stdout
-    python wat_parser.py test.wat out.hpp     # writes header
+    python runtimeParser.py test.wat             # prints to stdout
+    python runtimeParser.py test.wat out.hpp     # writes header
 """
 
 from __future__ import annotations

@@ -133,79 +133,59 @@ constexpr STATUS TOUPPER(State &state) {
 }
 // sprintf
 constexpr STATUS SPRINTF(State &state) {
-  // This is broken as of now
   Memory &memory = state.m_memory;
   Stack &op_stk = state.m_opStack;
 
-  // pop fixed args first
+  if (op_stk.m_vargCount < 3) {
+    throw "Insufficient arguments for sprintf syscall";
+  }
+
+  // m_vargCount includes buf + fmt + varargs
+  // Stack top → bottom: [vararg_N .. vararg_1 | fmt_ptr | buf_ptr]
+  int vararg_count = op_stk.m_vargCount - 2; // everything except buf and fmt
+
+  constexpr int MAX_ARGS = 16;
+  if (vararg_count > MAX_ARGS)
+    throw "Too many format arguments";
+
+  // ── Step 1: pop varargs off the top ───────────────────────────────────
+  Data varargs[MAX_ARGS]{};
+  for (int i = 0; i < vararg_count; i++)
+    varargs[vararg_count - 1 - i] = op_stk.Pop();
+
+  // ── Step 2: pop fixed args, now sitting on top ────────────────────────
   int32_t fmt_ptr = std::get<int32_t>(op_stk.Pop().m_data);
   int32_t buf_ptr = std::get<int32_t>(op_stk.Pop().m_data);
 
-  // count args from format string
-
-  // Number of varargs
-  int vararg_count = count_format_args(memory, fmt_ptr);
-
-  if (vararg_count == 0) {
-    throw "No argument found searching at wrong place";
-  }
-
-  constexpr int MAX_ARGS = 16;
-  Data tmp[MAX_ARGS]{};
-  // Pop all arguments (reverse order)
-  for (int i = 0; i < vararg_count; i++) {
-    tmp[i] = op_stk.Pop();
-  }
-
-  // Layout after pop:
-  // tmp[0]              = last vararg
-  // ...
-  // tmp[paramCount-3]   = first vararg
-  // tmp[paramCount-2]   = fmt
-  // tmp[paramCount-1]   = buf
-
-  // Reorder varargs into correct order
-  Data varargs[MAX_ARGS]{};
-  for (int i = 0; i < vararg_count; i++) {
-    varargs[i] = tmp[vararg_count - 1 - i];
-  }
-
+  // ── Step 3: format loop ───────────────────────────────────────────────
   int out_pos = 0;
   int arg_idx = 0;
 
   for (int i = fmt_ptr; memory.m_data[i] != '\0'; i++) {
     char c = memory.m_data[i];
 
-    // Bounds check
-    if (buf_ptr + out_pos >= MEMORYSIZE) {
+    if (buf_ptr + out_pos >= MEMORYSIZE)
       throw "Out of memory access";
-      return STATUS::ERROR;
-    }
 
     if (c != '%') {
       memory.m_data[buf_ptr + out_pos++] = c;
       continue;
     }
 
-    // Handle '%'
-    i++;
+    ++i;
     char spec = memory.m_data[i];
-
     if (spec == '\0')
       break;
 
     switch (spec) {
-    case '%': {
+    case '%':
       memory.m_data[buf_ptr + out_pos++] = '%';
       break;
-    }
 
     case 'd':
     case 'i': {
-      if (arg_idx >= vararg_count) {
-        throw "Too many integral args";
-        return STATUS::ERROR;
-      }
+      if (arg_idx >= vararg_count)
+        throw "Not enough integral args";
 
       int32_t val = std::get<int32_t>(varargs[arg_idx++].m_data);
       out_pos += write_int(memory, buf_ptr + out_pos, val);
@@ -213,67 +193,57 @@ constexpr STATUS SPRINTF(State &state) {
     }
 
     case 's': {
-      if (arg_idx >= vararg_count) {
-        throw "Too many string args";
-        return STATUS::ERROR;
-      }
+      if (arg_idx >= vararg_count)
+        throw "Not enough string args";
 
       int32_t str_ptr = std::get<int32_t>(varargs[arg_idx++].m_data);
 
-      int j = 0;
-      while (true) {
-        if (str_ptr + j >= MEMORYSIZE) {
-          throw "Out of memory access";
-          return STATUS::ERROR;
-        }
+      for (int j = 0;; ++j) {
+        if (str_ptr + j >= MEMORYSIZE)
+          throw "Source string out of bounds";
 
         char ch = memory.m_data[str_ptr + j];
         if (ch == '\0')
           break;
 
-        if (buf_ptr + out_pos >= MEMORYSIZE) {
-          throw "Out of memory access";
-          return STATUS::ERROR;
-        }
+        if (buf_ptr + out_pos >= MEMORYSIZE)
+          throw "Destination buffer out of bounds";
 
         memory.m_data[buf_ptr + out_pos++] = ch;
-        j++;
       }
       break;
     }
 
     case 'c': {
-      if (arg_idx >= vararg_count) {
-        throw "Too many string args";
-        return STATUS::ERROR;
-      }
+      if (arg_idx >= vararg_count)
+        throw "Not enough char args";
 
       char ch = static_cast<char>(std::get<int32_t>(varargs[arg_idx++].m_data));
+
+      if (buf_ptr + out_pos >= MEMORYSIZE)
+        throw "Out of memory access";
 
       memory.m_data[buf_ptr + out_pos++] = ch;
       break;
     }
 
-    default: {
-      // Graceful fallback: print literally
-      if (buf_ptr + out_pos + 1 >= MEMORYSIZE) {
+    default:
+      if (buf_ptr + out_pos + 1 >= MEMORYSIZE)
         throw "Out of memory access";
-        return STATUS::ERROR;
-      }
 
       memory.m_data[buf_ptr + out_pos++] = '%';
       memory.m_data[buf_ptr + out_pos++] = spec;
       break;
     }
-    }
   }
 
-  // Null terminate
+  // ── Step 4: null-terminate ────────────────────────────────────────────
   if (buf_ptr + out_pos >= MEMORYSIZE)
     return STATUS::ERROR;
+
   memory.m_data[buf_ptr + out_pos] = '\0';
 
-  // Return number of characters written (excluding null)
+  // ── Step 5: push return value ─────────────────────────────────────────
   Data ret{};
   ret.m_data = static_cast<int32_t>(out_pos);
   op_stk.Push(ret);
@@ -317,7 +287,13 @@ constexpr STATUS FOPEN(State &state) {
   std::string_view fileName(buff.data(), idx);
 
   int32_t filePtr = 0;
-  if (fileName == "waddump.txt") {
+  // ends-with check
+  auto endsWith = [](std::string_view str, std::string_view suffix) {
+    return str.size() >= suffix.size() &&
+           str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+  };
+
+  if (endsWith(fileName, "waddump.txt")) {
     throw "ye konsi file hai.";
   }
 
@@ -360,9 +336,35 @@ constexpr STATUS MALLOC(State &state) {
 }
 // strcpy
 constexpr STATUS STRCPY(State &state) {
-  //   throw "syscall strcpy not implemented\n";
+  //   The  strcpy() function copies the string pointed to by src, including the
+  //   terminating null byte ('\0'), to the buffer pointed to by dest.  The
+  //   strings may not overlap, and the destination string dest
+  //   must be large enough to receive the copy.Beware of buffer
+  //   overruns !
+  Memory &memory = state.m_memory;
+  Stack &op_stk = state.m_opStack;
+
+  if(op_stk.m_vargCount < 2) {
+    throw "Insufficient arguments for strcpy syscall";
+  }
+
+  // 1. Pop argument (pointer to key string)
+  int32_t src_ptr = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t dest_ptr = std::get<int32_t>(op_stk.Pop().m_data);
+
+  int idx = 0;
+  while (idx + src_ptr < MEMORYSIZE && memory.m_data[src_ptr + idx] != '\0') {
+    memory.m_data[dest_ptr + idx] = memory.m_data[src_ptr + idx];
+    idx++;
+  }
+  memory.m_data[dest_ptr + idx] = '\0';
+
+  Data ret{};
+  ret.m_data = dest_ptr;
+  op_stk.Push(ret);
+
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::OK;
 }
 // getenv
 // The getenv() function searches the environment list to find the environment
@@ -441,10 +443,14 @@ constexpr STATUS ACCESS(State &state) {
 
   int32_t permission = 1;
 
-  if (pathName != "") {
-    throw "doom1.wad!";
-    // grant permisson
-    permission = 0;
+  // ends-with check
+  auto endsWith = [](std::string_view str, std::string_view suffix) {
+    return str.size() >= suffix.size() &&
+           str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+  };
+
+  if (endsWith(pathName, "doom1.wad")) {
+    permission = 0; // grant access
   }
 
   Data ret{};
