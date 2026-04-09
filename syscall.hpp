@@ -136,36 +136,43 @@ constexpr STATUS SPRINTF(State &state) {
   Memory &memory = state.m_memory;
   Stack &op_stk = state.m_opStack;
 
-  if (op_stk.m_vargCount < 3) {
+  if (op_stk.m_vargCount < 2)
     throw "Insufficient arguments for sprintf syscall";
-  }
 
-  // m_vargCount includes buf + fmt + varargs
-  // Stack top → bottom: [vararg_N .. vararg_1 | fmt_ptr | buf_ptr]
-  int vararg_count = op_stk.m_vargCount - 2; // everything except buf and fmt
+  bool has_varargs = (op_stk.m_vargCount == 3);
 
-  constexpr int MAX_ARGS = 16;
-  if (vararg_count > MAX_ARGS)
-    throw "Too many format arguments";
-
-  // ── Step 1: pop varargs off the top ───────────────────────────────────
-  Data varargs[MAX_ARGS]{};
-  for (int i = 0; i < vararg_count; i++)
-    varargs[vararg_count - 1 - i] = op_stk.Pop();
-
-  // ── Step 2: pop fixed args, now sitting on top ────────────────────────
+  int32_t varargs_ptr =
+      has_varargs ? std::get<int32_t>(op_stk.Pop().m_data) : -1;
   int32_t fmt_ptr = std::get<int32_t>(op_stk.Pop().m_data);
   int32_t buf_ptr = std::get<int32_t>(op_stk.Pop().m_data);
 
-  // ── Step 3: format loop ───────────────────────────────────────────────
-  int out_pos = 0;
-  int arg_idx = 0;
+  if (fmt_ptr < 0 || fmt_ptr >= MEMORYSIZE)
+    throw "Invalid memory pointer for format string";
+  if (buf_ptr < 0 || buf_ptr >= MEMORYSIZE)
+    throw "Invalid memory pointer for buffer";
 
-  for (int i = fmt_ptr; memory.m_data[i] != '\0'; i++) {
+  int out_pos = 0;
+  int varg_off = 0;
+
+  auto read_vararg = [&](int32_t &out) -> bool {
+    if (!has_varargs || varargs_ptr < 0)
+      return false;
+    if (varargs_ptr + varg_off + 3 >= MEMORYSIZE)
+      return false;
+    out = static_cast<int32_t>(memory.m_data[varargs_ptr + varg_off]) |
+          static_cast<int32_t>(memory.m_data[varargs_ptr + varg_off + 1]) << 8 |
+          static_cast<int32_t>(memory.m_data[varargs_ptr + varg_off + 2])
+              << 16 |
+          static_cast<int32_t>(memory.m_data[varargs_ptr + varg_off + 3]) << 24;
+    varg_off += 4;
+    return true;
+  };
+
+  for (int i = fmt_ptr; i < MEMORYSIZE && memory.m_data[i] != '\0'; i++) {
     char c = memory.m_data[i];
 
     if (buf_ptr + out_pos >= MEMORYSIZE)
-      throw "Out of memory access";
+      throw "Buffer overflow in sprintf";
 
     if (c != '%') {
       memory.m_data[buf_ptr + out_pos++] = c;
@@ -184,66 +191,54 @@ constexpr STATUS SPRINTF(State &state) {
 
     case 'd':
     case 'i': {
-      if (arg_idx >= vararg_count)
-        throw "Not enough integral args";
-
-      int32_t val = std::get<int32_t>(varargs[arg_idx++].m_data);
+      int32_t val = 0;
+      if (!read_vararg(val))
+        throw "Error reading vararg for sprintf";
       out_pos += write_int(memory, buf_ptr + out_pos, val);
       break;
     }
 
     case 's': {
-      if (arg_idx >= vararg_count)
-        throw "Not enough string args";
+      int32_t str_ptr = 0;
+      if (!read_vararg(str_ptr))
+        throw "Error reading string pointer for sprintf";
+      if (str_ptr < 0 || str_ptr >= MEMORYSIZE)
+        throw "Invalid string pointer for sprintf";
 
-      int32_t str_ptr = std::get<int32_t>(varargs[arg_idx++].m_data);
-
-      for (int j = 0;; ++j) {
-        if (str_ptr + j >= MEMORYSIZE)
-          throw "Source string out of bounds";
-
+      for (int j = 0; str_ptr + j < MEMORYSIZE; ++j) {
         char ch = memory.m_data[str_ptr + j];
         if (ch == '\0')
           break;
-
         if (buf_ptr + out_pos >= MEMORYSIZE)
-          throw "Destination buffer out of bounds";
-
+          throw "Buffer overflow in sprintf";
         memory.m_data[buf_ptr + out_pos++] = ch;
       }
       break;
     }
 
     case 'c': {
-      if (arg_idx >= vararg_count)
-        throw "Not enough char args";
-
-      char ch = static_cast<char>(std::get<int32_t>(varargs[arg_idx++].m_data));
-
+      int32_t val = 0;
+      if (!read_vararg(val))
+        throw "Error reading vararg for sprintf";
       if (buf_ptr + out_pos >= MEMORYSIZE)
-        throw "Out of memory access";
-
-      memory.m_data[buf_ptr + out_pos++] = ch;
+        throw "Buffer overflow in sprintf";
+      memory.m_data[buf_ptr + out_pos++] = static_cast<char>(val);
       break;
     }
 
     default:
       if (buf_ptr + out_pos + 1 >= MEMORYSIZE)
-        throw "Out of memory access";
-
+        throw "Buffer overflow in sprintf";
       memory.m_data[buf_ptr + out_pos++] = '%';
       memory.m_data[buf_ptr + out_pos++] = spec;
       break;
     }
   }
 
-  // ── Step 4: null-terminate ────────────────────────────────────────────
   if (buf_ptr + out_pos >= MEMORYSIZE)
-    return STATUS::ERROR;
-
+    throw "Buffer overflow in sprintf";
   memory.m_data[buf_ptr + out_pos] = '\0';
 
-  // ── Step 5: push return value ─────────────────────────────────────────
   Data ret{};
   ret.m_data = static_cast<int32_t>(out_pos);
   op_stk.Push(ret);
@@ -344,7 +339,7 @@ constexpr STATUS STRCPY(State &state) {
   Memory &memory = state.m_memory;
   Stack &op_stk = state.m_opStack;
 
-  if(op_stk.m_vargCount < 2) {
+  if (op_stk.m_vargCount < 2) {
     throw "Insufficient arguments for strcpy syscall";
   }
 
@@ -402,9 +397,12 @@ constexpr STATUS GETENV(State &state) {
   state.m_heap.m_heapPtr += len;
 
   // 5. Copy into WASM memory
-  for (int i = 0; i < len; ++i) {
-    memory.m_data[ptr + i] = buff[i];
+  // GETENV: write null terminator correctly
+  memory.m_data[ptr] = '\0';
+  for (int i = 0; i < (int)value.size(); ++i){
+    memory.m_data[ptr + i] = static_cast<uint8_t>(value[i]);
   }
+  memory.m_data[ptr + value.size()] = '\0';
 
   // 6. Push return value (pointer)
   Data ret{};
