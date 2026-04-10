@@ -10,6 +10,7 @@ static constexpr int BLOCKSTACKSIZE = 128;
 static constexpr int MAXNUMPARAMS = 512;
 static constexpr int GCSIZE = 8192;
 static constexpr int LBUFF = 4096;
+static constexpr int FDTABLE = 16;
 
 static constexpr int MAXPARTS = 4096;
 static constexpr int MAXFUNCTIONS = 4096;

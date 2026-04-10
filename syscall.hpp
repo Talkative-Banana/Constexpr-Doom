@@ -30,6 +30,33 @@ constexpr int write_int(Memory &mem, int offset, int32_t val) {
 
   return len;
 }
+// helper — constexpr itoa into frame buffer, returns chars written
+constexpr int write_int(FrameBuffer &frameBuffer, int32_t val) {
+  if (val == 0) {
+    frameBuffer.m_data[frameBuffer.m_framePtr] = '0';
+    frameBuffer.m_framePtr++;
+    return 1;
+  }
+
+  std::array<char, 12> tmp;
+  int len = 0;
+  bool neg = val < 0;
+  // careful: INT32_MIN can't be negated, but fine for now
+  if (neg)
+    val = -val;
+  while (val > 0) {
+    tmp[len++] = '0' + (val % 10);
+    val /= 10;
+  }
+  if (neg)
+    tmp[len++] = '-';
+
+  for (int j = 0; j < len; j++) {
+    frameBuffer.m_data[frameBuffer.m_framePtr++] = tmp[len - 1 - j];
+  }
+
+  return len;
+}
 constexpr int count_format_args(const Memory &memory, int32_t fmt_ptr) {
   int count = 0;
 
@@ -254,9 +281,105 @@ constexpr STATUS MEMCPY(State &state) {
 }
 // printf
 constexpr STATUS PRINTF(State &state) {
-  //   throw "syscall printf not implemented\n";
+  // Print ARGUMENT(s) according to FORMAT, or execute according to OPTION:
+  Memory &memory = state.m_memory;
+  Stack &op_stk = state.m_opStack;
+  FrameBuffer &frameBuffer = state.m_frameBuffer;
+
+  if (op_stk.m_vargCount < 1)
+    throw "Insufficient arguments for printf syscall";
+
+  bool has_varargs = (op_stk.m_vargCount >= 2);
+
+  int32_t varargs_ptr =
+      has_varargs ? std::get<int32_t>(op_stk.Pop().m_data) : -1;
+  int32_t fmt_ptr = std::get<int32_t>(op_stk.Pop().m_data);
+
+  if (fmt_ptr < 0 || fmt_ptr >= MEMORYSIZE)
+    throw "Invalid memory pointer for format string";
+
+  int out_pos = frameBuffer.m_framePtr;
+  int varg_off = 0;
+
+  auto read_vararg = [&](int32_t &out) -> bool {
+    if (!has_varargs || varargs_ptr < 0)
+      return false;
+    if (varargs_ptr + varg_off + 3 >= MEMORYSIZE)
+      return false;
+    out = static_cast<int32_t>(memory.m_data[varargs_ptr + varg_off]) |
+          static_cast<int32_t>(memory.m_data[varargs_ptr + varg_off + 1]) << 8 |
+          static_cast<int32_t>(memory.m_data[varargs_ptr + varg_off + 2])
+              << 16 |
+          static_cast<int32_t>(memory.m_data[varargs_ptr + varg_off + 3]) << 24;
+    varg_off += 4;
+    return true;
+  };
+
+  for (int i = fmt_ptr; i < MEMORYSIZE && memory.m_data[i] != '\0'; i++) {
+    char c = memory.m_data[i];
+
+    if (c != '%') {
+      frameBuffer.m_data[frameBuffer.m_framePtr++] = c;
+      continue;
+    }
+
+    ++i;
+    char spec = memory.m_data[i];
+    if (spec == '\0')
+      break;
+
+    switch (spec) {
+    case '%':
+      frameBuffer.m_data[frameBuffer.m_framePtr++] = '%';
+      break;
+
+    case 'd':
+    case 'i': {
+      int32_t val = 0;
+      if (!read_vararg(val))
+        throw "Error reading vararg for printf";
+      out_pos += write_int(frameBuffer, val);
+      break;
+    }
+
+    case 's': {
+      int32_t str_ptr = 0;
+      if (!read_vararg(str_ptr))
+        throw "Error reading string pointer for printf";
+      if (str_ptr < 0 || str_ptr >= MEMORYSIZE)
+        throw "Invalid string pointer for printf";
+
+      for (int j = 0; str_ptr + j < MEMORYSIZE; ++j) {
+        char ch = memory.m_data[str_ptr + j];
+        if (ch == '\0')
+          break;
+        frameBuffer.m_data[frameBuffer.m_framePtr++] = ch;
+      }
+      break;
+    }
+
+    case 'c': {
+      int32_t val = 0;
+      if (!read_vararg(val))
+        throw "Error reading vararg for printf";
+      frameBuffer.m_data[frameBuffer.m_framePtr++] = static_cast<char>(val);
+      break;
+    }
+
+    default:
+      frameBuffer.m_data[frameBuffer.m_framePtr++] = '%';
+      frameBuffer.m_data[frameBuffer.m_framePtr++] = spec;
+      break;
+    }
+  }
+
+  frameBuffer.m_data[frameBuffer.m_framePtr++] = '\0';
+
+  Data ret{};
+  ret.m_data = static_cast<int32_t>(frameBuffer.m_framePtr - out_pos);
+  op_stk.Push(ret);
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::OK;
 }
 // fopen
 constexpr STATUS FOPEN(State &state) {
@@ -310,7 +433,7 @@ constexpr STATUS MALLOC(State &state) {
   // 1. Pop argument (size of memory to alloc)
   int32_t size = std::get<int32_t>(op_stk.Pop().m_data);
 
-  // TODO: Fix this to get ptr dynamically
+  // TODO: Fix this to get ptr dynamically [bump alloc for now]
   // 2. get a place to save result to
   int32_t ptr = state.m_heap.m_heapPtr;
 
@@ -399,7 +522,7 @@ constexpr STATUS GETENV(State &state) {
   // 5. Copy into WASM memory
   // GETENV: write null terminator correctly
   memory.m_data[ptr] = '\0';
-  for (int i = 0; i < (int)value.size(); ++i){
+  for (int i = 0; i < (int)value.size(); ++i) {
     memory.m_data[ptr + i] = static_cast<uint8_t>(value[i]);
   }
   memory.m_data[ptr + value.size()] = '\0';
@@ -639,26 +762,124 @@ constexpr STATUS STRCMP(State &state) {
 // open
 constexpr STATUS OPEN(State &state) {
   //   throw "syscall open not implemented\n";
+  Memory &memory = state.m_memory;
+  Stack &op_stk = state.m_opStack;
+
+  std::get<int32_t>(op_stk.Pop().m_data); // mode
+  std::get<int32_t>(op_stk.Pop().m_data); // flags
+  int32_t filePtr = std::get<int32_t>(op_stk.Pop().m_data);
+
+  // Make all required files available at fixed addresses in memory, and return
+  // pointers to them from fopen.
+  int idx = 0;
+  while (idx + filePtr < MEMORYSIZE && memory.m_data[filePtr + idx] != '\0') {
+    idx++;
+  }
+
+  std::array<char, LBUFF> buff = {0};
+  for (int i = 0; i < idx; i++) {
+    buff[i] = memory.m_data[filePtr + i];
+  }
+
+  std::string_view fileName(buff.data(), idx);
+
+  int32_t fileDescriptor = -1;
+
+  if (fileName == "/doom1.wad") {
+    fileDescriptor = 3; // dummy fd for doom1.wad
+  }
+
+  if (fileDescriptor != -1) {
+    // Mark the file as opened in the state (if needed)
+    state.m_fdTable[fileDescriptor].m_open = true;
+    state.m_fdTable[fileDescriptor].m_offset = 0;
+    // TODO: update size based on actual file size
+    state.m_fdTable[fileDescriptor].m_size = 0;
+    state.m_fdTable[fileDescriptor].m_dataPtr = 0;
+  }
+
+  Data ret{};
+  ret.m_data = int32_t{fileDescriptor};
+  op_stk.Push(ret);
+
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::OK;
 }
 // read
 constexpr STATUS READ(State &state) {
-  //   throw "syscall read not implemented\n";
+  // read() attempts to read up to count bytes from file descriptor fd
+  // into the buffer starting at buf.
+
+  // On  files that support seeking, the read operation commences at the file
+  // offset, and the file offset is incremented by the number of bytes read. If
+  // the file offset is at or past the end of file, no bytes are read, and
+  // read() returns zero.
+
+  // If count is zero, read() may detect the errors described below.  In the
+  // absence of any errors, or if read() does not check for errors, a read()
+  // with a count of 0 returns zero and has  no other effects.
+
+  // According to POSIX.1, if count is greater than SSIZE_MAX, the result is
+  // implementation-defined; see NOTES for the upper limit on Linux.
+
   state.m_instrPointer++;
   return STATUS::ERROR;
 }
 // close
 constexpr STATUS CLOSE(State &state) {
-  //   throw "syscall close not implemented\n";
+  // close()  closes  a  file descriptor, so that it no longer refers to
+  // any file and may be reused.  Any record locks (see fcntl(2)) held on
+  // the file it was associated with, and owned by the
+  // process, are removed(regardless of the file descriptor that was used to
+  // obtain the lock).
+
+  //  If fd is the last file descriptor referring to the underlying open file
+  //  description(see open(2)), the resources associated with the open file
+  //  description are freed; if the file descrip‐ tor was the last reference to
+  //  a file which has been removed using unlink(2), the file is deleted.
+
+  Stack &op_stk = state.m_opStack;
+  int32_t handle = std::get<int32_t>(op_stk.Pop().m_data);
+
+  bool success = false;
+  if (handle >= 0 && handle < FDTABLE && state.m_fdTable[handle].m_open) {
+    state.m_fdTable[handle].m_open = false;
+    success = true;
+  }
+
+  Data ret{};
+  ret.m_data = int32_t{success}; // success
+  op_stk.Push(ret);
+
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::OK;
 }
 // strncpy
 constexpr STATUS STRNCPY(State &state) {
-  //   throw "syscall strncmp not implemented\n";
+  // The strncpy() function is similar,
+  // except that at most n bytes of src are copied.Warning
+  // : If there is no null byte among the first n bytes of src,
+  // the string placed in dest will not be null - terminated.
+
+  Memory &memory = state.m_memory;
+  Stack &op_stk = state.m_opStack;
+
+  int32_t n = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t src = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t dst = std::get<int32_t>(op_stk.Pop().m_data);
+
+  int i = 0;
+  for (; i < n && memory.m_data[src + i] != '\0'; i++)
+    memory.m_data[dst + i] = memory.m_data[src + i];
+  for (; i < n; i++) // pad with nulls
+    memory.m_data[dst + i] = '\0';
+
+  Data ret{};
+  ret.m_data = dst;
+  op_stk.Push(ret);
+
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::OK;
 }
 // write
 constexpr STATUS WRITE(State &state) {
@@ -668,9 +889,36 @@ constexpr STATUS WRITE(State &state) {
 }
 // fstat
 constexpr STATUS FSTAT(State &state) {
-  //   throw "syscall fstat not implemented\n";
+  //  These  functions  return  information  about  a  file,  in  the
+  //  buffer  pointed to by statbuf.  No permissions are required on the
+  //  file itself, but—in the case of stat(), fstatat(), and
+  //  lstat()—execute(search) permission is required on all of the
+  //  directories in pathname that lead to the file.
+
+  //  stat() and fstatat() retrieve information about the file pointed to by
+  //  pathname; the differences for fstatat() are described below.
+
+  //  lstat() is identical to stat(), except that if pathname is a symbolic
+  //  link, then it returns information about the link itself, not the file
+  //  that the link refers to.
+
+  //  fstat() is identical to stat(), except that the file about which
+  //  information is to be retrieved is specified by the file descriptor fd.
+
+  // Memory &memory = state.m_memory;
+  Stack &op_stk = state.m_opStack;
+
+  // Pop in reverse order
+  std::get<int32_t>(op_stk.Pop().m_data); // statPtr
+  std::get<int32_t>(op_stk.Pop().m_data); // handle
+
+  Data ret{};
+  ret.m_data =
+      int32_t{0}; // success by default, can set to error code if needed
+  op_stk.Push(ret);
+
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::OK;
 }
 // feof
 constexpr STATUS FEOF(State &state) {
@@ -741,9 +989,50 @@ constexpr STATUS STRCASECMP(State &state) {
 }
 // strncasecmp
 constexpr STATUS STRNCASECMP(State &state) {
-  //   throw "syscall strncasecmp not implemented\n";
+  // The strncasecmp() function is similar, to strcasecmp(),
+  // except that it compares no more than n bytes of s1 and s2.
+  Memory &memory = state.m_memory;
+  Stack &op_stk = state.m_opStack;
+
+  // Pop in reverse order
+  int32_t n = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t s2_ptr = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t s1_ptr = std::get<int32_t>(op_stk.Pop().m_data);
+
+  int i = 0;
+
+  while (i < n) {
+    char c1 = memory.m_data[s1_ptr + i];
+    char c2 = memory.m_data[s2_ptr + i];
+
+    char l1 = tolower_ascii(c1);
+    char l2 = tolower_ascii(c2);
+
+    if (l1 != l2) {
+      Data ret{};
+      ret.m_data = static_cast<int32_t>(l1 - l2);
+      op_stk.Push(ret);
+
+      state.m_instrPointer++;
+      return STATUS::OK;
+    }
+
+    // If both hit null → equal
+    if (c1 == '\0') {
+      Data ret{};
+      ret.m_data = int32_t{0};
+      op_stk.Push(ret);
+      state.m_instrPointer++;
+      return STATUS::OK;
+    }
+    i++;
+  }
+
+  Data ret{};
+  ret.m_data = int32_t{0};
+  op_stk.Push(ret);
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::OK;
 }
 // lseek
 constexpr STATUS LSEEK(State &state) {
@@ -753,7 +1042,17 @@ constexpr STATUS LSEEK(State &state) {
 }
 // realloc
 constexpr STATUS REALLOC(State &state) {
-  //   throw "syscall realloc not implemented\n";
+  // The realloc() function changes the size of the memory block pointed to
+  // by ptr to size bytes.  The contents will be unchanged in the range from
+  // the start of the region up to  the  minimum
+  // of  the  old  and new sizes.  If the new size is larger than the old size,
+  // the added memory will not be initialized.  If ptr is NULL, then the call
+  // is equivalent to malloc(size), for all values of size;
+  // if size is equal to zero, and ptr is not NULL,
+  // then the call is equivalent to free(ptr).Unless ptr is NULL,
+  // it must have been returned by an earlier call to malloc(), calloc(),
+  // or realloc().If the area pointed to was moved, a free(ptr) is done.
+
   state.m_instrPointer++;
   return STATUS::ERROR;
 }

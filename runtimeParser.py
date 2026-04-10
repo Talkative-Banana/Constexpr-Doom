@@ -644,7 +644,7 @@ def emit_state(state: ParsedState, var: str = "state") -> str:
                     for k, b in enumerate(group))
                 w(f"  {assigns}")
         w("")
-        w(f"  {var}.m_heap.m_heapPtr = {finalOffset + 1};")
+        w(f"  {var}.m_heap.m_heapPtr = {state.stack_pointer};")
 
     # ── Virtual table ──────────────────────────────────────────
     if state.vtable_entries:

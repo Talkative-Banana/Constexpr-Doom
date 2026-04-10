@@ -541,6 +541,13 @@ struct FrameBuffer {
   std::array<char, SCREENWIDTH * SCREENHEIGHT> m_data;
 };
 
+struct FileDesc {
+  bool m_open = false;
+  uint32_t m_offset = 0;  // current read position
+  uint32_t m_size = 0;    // file size
+  uint32_t m_dataPtr = 0; // address in wasm memory where file bytes live
+};
+
 struct State {
   Heap m_heap{};
   Stack m_stack{};
@@ -552,6 +559,7 @@ struct State {
   FunctionTable m_functionTable{};
   VirtualTable m_virtualTable{};
   Function *m_activeFunction = nullptr;
+  std::array<FileDesc, FDTABLE> m_fdTable{};
 };
 
 constexpr std::size_t getFunctionId(State &state, std::string_view str) {
