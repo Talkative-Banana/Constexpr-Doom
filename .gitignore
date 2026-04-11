@@ -1,5 +1,6 @@
 *.o
 .vscode/
 *.wasm
-ctwrdoom1.wad
+ctwr
+doom1.wad
 parsedState.hpp
