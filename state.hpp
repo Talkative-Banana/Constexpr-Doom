@@ -548,18 +548,30 @@ struct FileDesc {
   uint32_t m_dataPtr = 0; // address in wasm memory where file bytes live
 };
 
+struct Descriptor {
+  std::array<FileDesc, FDTABLE> m_fdTable{};
+};
+
+struct FileSystem {
+  // For simplicity, we can pre-load all files into memory at fixed addresses,
+  // and use the open syscall to get pointers to them. The file descriptor can
+  // just be an index into a table that tracks which files are open.
+  std::array<char, FILESYSTEMSIZE> m_data{};
+};
+
 struct State {
   Heap m_heap{};
   Stack m_stack{};
   Stack m_opStack{};
   Global m_global{};
   Memory m_memory{};
+  Descriptor m_descriptor{};
+  FileSystem m_fileSystem{};
   FrameBuffer m_frameBuffer{};
   uint64_t m_instrPointer = 0;
   FunctionTable m_functionTable{};
   VirtualTable m_virtualTable{};
   Function *m_activeFunction = nullptr;
-  std::array<FileDesc, FDTABLE> m_fdTable{};
 };
 
 constexpr std::size_t getFunctionId(State &state, std::string_view str) {

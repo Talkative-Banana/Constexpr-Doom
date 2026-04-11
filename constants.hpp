@@ -14,6 +14,7 @@ static constexpr int FDTABLE = 16;
 
 static constexpr int MAXPARTS = 4096;
 static constexpr int MAXFUNCTIONS = 4096;
+static constexpr int FILESYSTEMSIZE = 1024 * 1024 * 64; // 64 MB
 static constexpr int MAXVIRTUALTABLESIZE = 4096;
 
 static constexpr int STACKSIZE = INT32_MAX;

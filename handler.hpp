@@ -250,6 +250,10 @@ constexpr STATUS HandleBrTable(State &state, const Instr &instr) {
   // clamp to default if out of bounds
   // m_brTable is your array of branch targets
 
+  if(idx < 0) {
+    throw "Invalid negative index in br_table";
+  }
+
   // m_operandValue is the count
   int32_t target;
   if (idx <= instr.m_brCount - 1) {

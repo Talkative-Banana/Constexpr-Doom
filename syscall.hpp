@@ -764,6 +764,7 @@ constexpr STATUS OPEN(State &state) {
   //   throw "syscall open not implemented\n";
   Memory &memory = state.m_memory;
   Stack &op_stk = state.m_opStack;
+  Descriptor &desc = state.m_descriptor;
 
   std::get<int32_t>(op_stk.Pop().m_data); // mode
   std::get<int32_t>(op_stk.Pop().m_data); // flags
@@ -791,11 +792,11 @@ constexpr STATUS OPEN(State &state) {
 
   if (fileDescriptor != -1) {
     // Mark the file as opened in the state (if needed)
-    state.m_fdTable[fileDescriptor].m_open = true;
-    state.m_fdTable[fileDescriptor].m_offset = 0;
+    desc.m_fdTable[fileDescriptor].m_open = true;
+    desc.m_fdTable[fileDescriptor].m_offset = 0;
     // TODO: update size based on actual file size
-    state.m_fdTable[fileDescriptor].m_size = 0;
-    state.m_fdTable[fileDescriptor].m_dataPtr = 0;
+    desc.m_fdTable[fileDescriptor].m_size = 28795076; // size of doom1.wad
+    desc.m_fdTable[fileDescriptor].m_dataPtr = 0;
   }
 
   Data ret{};
@@ -821,9 +822,35 @@ constexpr STATUS READ(State &state) {
 
   // According to POSIX.1, if count is greater than SSIZE_MAX, the result is
   // implementation-defined; see NOTES for the upper limit on Linux.
+  Stack &op_stk = state.m_opStack;
+  Memory &memory = state.m_memory;
+  FileSystem &fs = state.m_fileSystem;
+  Descriptor &desc = state.m_descriptor;
+
+  int32_t count = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t bufPtr = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t handle = std::get<int32_t>(op_stk.Pop().m_data);
+
+  if(handle < 0 || handle >= FDTABLE || !desc.m_fdTable[handle].m_open) {
+    Data ret{};
+    ret.m_data = int32_t{-1}; // error
+    op_stk.Push(ret);
+    state.m_instrPointer++;
+    return STATUS::OK;
+  }
+
+  int idx = 0;
+  while(idx < count && bufPtr + idx < MEMORYSIZE && desc.m_fdTable[handle].m_offset + idx < desc.m_fdTable[handle].m_size) {
+    memory.m_data[bufPtr + idx] = fs.m_data[desc.m_fdTable[handle].m_dataPtr + desc.m_fdTable[handle].m_offset + idx];
+    idx++;
+  }
+
+  Data ret{};
+  ret.m_data = idx; // number of bytes read
+  op_stk.Push(ret);
 
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::OK;
 }
 // close
 constexpr STATUS CLOSE(State &state) {
@@ -839,11 +866,12 @@ constexpr STATUS CLOSE(State &state) {
   //  a file which has been removed using unlink(2), the file is deleted.
 
   Stack &op_stk = state.m_opStack;
+  Descriptor &desc = state.m_descriptor;
   int32_t handle = std::get<int32_t>(op_stk.Pop().m_data);
 
   bool success = false;
-  if (handle >= 0 && handle < FDTABLE && state.m_fdTable[handle].m_open) {
-    state.m_fdTable[handle].m_open = false;
+  if (handle >= 0 && handle < FDTABLE && desc.m_fdTable[handle].m_open) {
+    desc.m_fdTable[handle].m_open = false;
     success = true;
   }
 
@@ -1036,7 +1064,50 @@ constexpr STATUS STRNCASECMP(State &state) {
 }
 // lseek
 constexpr STATUS LSEEK(State &state) {
-  //   throw "syscall lseek not implemented\n";
+  // lseek() repositions the file offset of the open file description
+  // associated with the file descriptor fd to the argument offset
+  // according to the directive whence as follows:
+
+  // SEEK_SET The file offset is set to offset bytes.
+  // SEEK_CUR The file offset is set to its current location plus offset bytes.
+  // SEEK_END The file offset is set to the size of the file plus offset bytes.
+  // lseek() allows the file offset to be set beyond the end of the file(but
+  // this does not change the size of the file) .If data is later written at
+  // this point, subsequent reads of the data in the gap(a "hole") return null
+  // bytes('\0') until data is actually written into the gap.
+
+  Stack &op_stk = state.m_opStack;
+  Descriptor &desc = state.m_descriptor;
+
+  // Pop in reverse order
+  int32_t whence = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t offset = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t handle = std::get<int32_t>(op_stk.Pop().m_data);
+
+  if (handle < 0 || handle >= FDTABLE || !desc.m_fdTable[handle].m_open) {
+    Data ret{};
+    ret.m_data = int32_t{-1}; // error
+    op_stk.Push(ret);
+    state.m_instrPointer++;
+    return STATUS::OK;
+  }
+
+  FileDesc &fd = desc.m_fdTable[handle];
+
+  if (whence == 0) {
+    fd.m_offset = offset;
+  } else {
+    if (whence == 1) {
+      fd.m_offset += offset;
+    } else {
+      fd.m_offset = fd.m_size + offset;
+    }
+  }
+
+  Data ret{};
+  ret.m_data = fd.m_offset;
+  op_stk.Push(ret);
+
   state.m_instrPointer++;
   return STATUS::ERROR;
 }
@@ -1052,7 +1123,7 @@ constexpr STATUS REALLOC(State &state) {
   // then the call is equivalent to free(ptr).Unless ptr is NULL,
   // it must have been returned by an earlier call to malloc(), calloc(),
   // or realloc().If the area pointed to was moved, a free(ptr) is done.
-
+  
   state.m_instrPointer++;
   return STATUS::ERROR;
 }
