@@ -250,7 +250,7 @@ constexpr STATUS HandleBrTable(State &state, const Instr &instr) {
   // clamp to default if out of bounds
   // m_brTable is your array of branch targets
 
-  if(idx < 0) {
+  if (idx < 0) {
     throw "Invalid negative index in br_table";
   }
 
@@ -342,14 +342,15 @@ constexpr STATUS HandleCallIndirect(State &state) {
 constexpr bool isArithmetic(const Instr &instr) {
   return instr.m_mem == Member::_add || instr.m_mem == Member::_sub ||
          instr.m_mem == Member::_mul || instr.m_mem == Member::_le_s ||
-         instr.m_mem == Member::_ge_s || instr.m_mem == Member::_and ||
-         instr.m_mem == Member::_eqz || instr.m_mem == Member::_lt_s ||
-         instr.m_mem == Member::_rem_s || instr.m_mem == Member::_rem_u ||
-         instr.m_mem == Member::_shl || instr.m_mem == Member::_div_s ||
-         instr.m_mem == Member::_ne || instr.m_mem == Member::_shr_s ||
-         instr.m_mem == Member::_gt_s || instr.m_mem == Member::_gt_u ||
-         instr.m_mem == Member::_eq || instr.m_mem == Member::_xor ||
-         instr.m_mem == Member::_or || instr.m_mem == Member::_trunc_f32_s ||
+         instr.m_mem == Member::_ge_s || instr.m_mem == Member::_ge_u ||
+         instr.m_mem == Member::_and || instr.m_mem == Member::_eqz ||
+         instr.m_mem == Member::_lt_s || instr.m_mem == Member::_rem_s ||
+         instr.m_mem == Member::_rem_u || instr.m_mem == Member::_shl ||
+         instr.m_mem == Member::_div_s || instr.m_mem == Member::_ne ||
+         instr.m_mem == Member::_shr_s || instr.m_mem == Member::_gt_s ||
+         instr.m_mem == Member::_gt_u || instr.m_mem == Member::_eq ||
+         instr.m_mem == Member::_xor || instr.m_mem == Member::_or ||
+         instr.m_mem == Member::_trunc_f32_s ||
          instr.m_mem == Member::_trunc_f64_s ||
          instr.m_mem == Member::_extend_i32_s ||
          instr.m_mem == Member::_wrap_i64;
@@ -435,6 +436,10 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
       result = std::get<T1>(a.m_data) > std::get<T1>(b.m_data);
     } else if (instr.m_mem == Member::_ge_s) {
       result = std::get<T1>(a.m_data) >= std::get<T1>(b.m_data);
+    } else if (instr.m_mem == Member::_ge_u) {
+      using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
+      result = static_cast<UT>(std::get<T1>(a.m_data)) >=
+               static_cast<UT>(std::get<T1>(b.m_data));
     } else if (instr.m_mem == Member::_gt_u) {
       using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
       result = static_cast<UT>(std::get<T1>(a.m_data)) >

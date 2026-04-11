@@ -156,7 +156,7 @@ constexpr STATUS STRLEN(State &state) {
 constexpr STATUS TOUPPER(State &state) {
   //   throw "syscall toupper not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_TOUPPER;
 }
 // sprintf
 constexpr STATUS SPRINTF(State &state) {
@@ -277,7 +277,7 @@ constexpr STATUS SPRINTF(State &state) {
 constexpr STATUS MEMCPY(State &state) {
   //   throw "syscall memcpy not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_MEMCPY;
 }
 // printf
 constexpr STATUS PRINTF(State &state) {
@@ -619,25 +619,25 @@ constexpr STATUS PUTS(State &state) {
 constexpr STATUS FSEEK(State &state) {
   //   throw "syscall fseek not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_FSEEK;
 }
 // ftell
 constexpr STATUS FTELL(State &state) {
   //   throw "syscall ftell not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_FTELL;
 }
 // fread
 constexpr STATUS FREAD(State &state) {
   //   throw "syscall fread not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_FREAD;
 }
 // fclose
 constexpr STATUS FCLOSE(State &state) {
   //   throw "syscall fclose not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_FCLOSE;
 }
 // calloc
 constexpr STATUS CALLOC(State &state) {
@@ -683,7 +683,7 @@ constexpr STATUS CALLOC(State &state) {
 constexpr STATUS EXIT(State &state) {
   //   throw "syscall exit not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_EXIT;
 }
 // setbuf
 constexpr STATUS SETBUF(State &state) {
@@ -709,55 +709,72 @@ constexpr STATUS SETBUF(State &state) {
 constexpr STATUS MKDIR(State &state) {
   //   throw "syscall mkdir not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_MKDIR;
 }
 // atoi
 constexpr STATUS ATOI(State &state) {
   //   throw "syscall atoi not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_ATOI;
 }
 // putchar
 constexpr STATUS PUTCHAR(State &state) {
   //   throw "syscall putchar not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_PUTCHAR;
 }
 // getchar
 constexpr STATUS GETCHAR(State &state) {
   //   throw "syscall getchar not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_GETCHAR;
 }
 // fprintf
 constexpr STATUS FPRINTF(State &state) {
   //   throw "syscall fprintf not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_FPRINTF;
 }
 // fputc
 constexpr STATUS FPUTC(State &state) {
   //   throw "syscall fputc not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_FPUTC;
 }
 // fwrite
 constexpr STATUS FWRITE(State &state) {
   //   throw "syscall fwrite not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_FWRITE;
 }
 // memset
 constexpr STATUS MEMSET(State &state) {
-  //   throw "syscall memset not implemented\n";
+  // The memset() function fills the first n bytes of the memory area pointed to
+  // by s with the constant byte c.
+
+  Memory &memory = state.m_memory;
+  Stack &op_stk = state.m_opStack;
+
+  int32_t size = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t value = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t ptr = std::get<int32_t>(op_stk.Pop().m_data);
+
+  for (int i = 0; i < size; i++) {
+    memory.m_data[ptr + i] = static_cast<uint8_t>(value);
+  }
+
+  Data ret{};
+  ret.m_data = ptr;
+  op_stk.Push(ret);
+
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::OK;
 }
 // strcmp
 constexpr STATUS STRCMP(State &state) {
   //   throw "syscall strcmp not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_STRCMP;
 }
 // open
 constexpr STATUS OPEN(State &state) {
@@ -831,7 +848,7 @@ constexpr STATUS READ(State &state) {
   int32_t bufPtr = std::get<int32_t>(op_stk.Pop().m_data);
   int32_t handle = std::get<int32_t>(op_stk.Pop().m_data);
 
-  if(handle < 0 || handle >= FDTABLE || !desc.m_fdTable[handle].m_open) {
+  if (handle < 0 || handle >= FDTABLE || !desc.m_fdTable[handle].m_open) {
     Data ret{};
     ret.m_data = int32_t{-1}; // error
     op_stk.Push(ret);
@@ -840,8 +857,12 @@ constexpr STATUS READ(State &state) {
   }
 
   int idx = 0;
-  while(idx < count && bufPtr + idx < MEMORYSIZE && desc.m_fdTable[handle].m_offset + idx < desc.m_fdTable[handle].m_size) {
-    memory.m_data[bufPtr + idx] = fs.m_data[desc.m_fdTable[handle].m_dataPtr + desc.m_fdTable[handle].m_offset + idx];
+  while (idx < count && bufPtr + idx < MEMORYSIZE &&
+         desc.m_fdTable[handle].m_offset + idx <
+             desc.m_fdTable[handle].m_size) {
+    memory.m_data[bufPtr + idx] =
+        fs.m_data[desc.m_fdTable[handle].m_dataPtr +
+                  desc.m_fdTable[handle].m_offset + idx];
     idx++;
   }
 
@@ -913,7 +934,7 @@ constexpr STATUS STRNCPY(State &state) {
 constexpr STATUS WRITE(State &state) {
   //   throw "syscall write not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_WRITE;
 }
 // fstat
 constexpr STATUS FSTAT(State &state) {
@@ -952,19 +973,19 @@ constexpr STATUS FSTAT(State &state) {
 constexpr STATUS FEOF(State &state) {
   //   throw "syscall feof not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_FEOF;
 }
 // fscanf
 constexpr STATUS FSCANF(State &state) {
   //   throw "syscall fscanf not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_FSCANF;
 }
 // sscanf
 constexpr STATUS SSCANF(State &state) {
   //   throw "syscall sscanf not implemented\n";
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::ERROR_SSCANF;
 }
 
 constexpr char tolower_ascii(char c) {
@@ -1109,7 +1130,7 @@ constexpr STATUS LSEEK(State &state) {
   op_stk.Push(ret);
 
   state.m_instrPointer++;
-  return STATUS::ERROR;
+  return STATUS::OK;
 }
 // realloc
 constexpr STATUS REALLOC(State &state) {
@@ -1123,11 +1144,54 @@ constexpr STATUS REALLOC(State &state) {
   // then the call is equivalent to free(ptr).Unless ptr is NULL,
   // it must have been returned by an earlier call to malloc(), calloc(),
   // or realloc().If the area pointed to was moved, a free(ptr) is done.
-  
-  state.m_instrPointer++;
-  return STATUS::ERROR;
-}
+  Memory &mem = state.m_memory;
+  Stack &op_stk = state.m_opStack;
 
+  int32_t size = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t rPtr = std::get<int32_t>(op_stk.Pop().m_data);
+
+  int32_t newPtr = 0;
+
+  if (rPtr == 0) {
+    // NULL ptr — equivalent to malloc(size)
+    if (size == 0) {
+      Data ret{};
+      ret.m_data = int32_t(0);
+      op_stk.Push(ret);
+      state.m_instrPointer++;
+      return STATUS::OK;
+    }
+    newPtr = state.m_heap.m_heapPtr;
+    state.m_heap.m_heapPtr += size;
+
+    Data ret{};
+    ret.m_data = int32_t(newPtr);
+    op_stk.Push(ret);
+
+  } else if (size == 0) {
+    // free(ptr) — bump allocator just ignores frees
+    Data ret{};
+    ret.m_data = int32_t(0);
+    op_stk.Push(ret);
+  } else {
+    // Allocate new block and copy old contents
+    newPtr = state.m_heap.m_heapPtr;
+    state.m_heap.m_heapPtr += size;
+
+    // Copy from old ptr (we don't know old size, copy 'size' bytes as best
+    // effort)
+    for (int32_t i = 0; i < size; i++) {
+      mem.m_data[newPtr + i] = mem.m_data[rPtr + i];
+    }
+    // Old block is "freed" — bump allocator ignores it
+    Data ret{};
+    ret.m_data = int32_t(newPtr);
+    op_stk.Push(ret);
+  }
+
+  state.m_instrPointer++;
+  return STATUS::OK;
+}
 constexpr STATUS dispatchSysCall(State &state, std::string_view name) {
   if (name == "$strlen")
     return STRLEN(state);
