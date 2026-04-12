@@ -14,15 +14,15 @@ static constexpr int FDTABLE = 16;
 
 static constexpr int MAXPARTS = 4096;
 static constexpr int MAXFUNCTIONS = 4096;
-static constexpr int FILESYSTEMSIZE = 1024 * 1024 * 64; // 64 MB
+static constexpr int FILESYSTEMSIZE = 1024 * 1024 * 32; // 32 MB
 static constexpr int MAXVIRTUALTABLESIZE = 4096;
 
-static constexpr int STACKSIZE = INT32_MAX;
+static constexpr int STACKSIZE = 1024 * 1024;
 static constexpr int GLOBALSIZE = 1024;
 
-static constexpr int MEMORYSIZE = INT32_MAX;
+static constexpr int MEMORYSIZE = 1024 * 1024 * 64;
 static constexpr int SCREENWIDTH = 320;
-static constexpr int SCREENHEIGHT = 280;
+static constexpr int SCREENHEIGHT = 20;
 
 static constexpr std::string_view CALL = "call";
 static constexpr std::string_view MAIN = "$main";

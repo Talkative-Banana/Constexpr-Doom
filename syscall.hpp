@@ -154,9 +154,28 @@ constexpr STATUS STRLEN(State &state) {
 }
 // toupper
 constexpr STATUS TOUPPER(State &state) {
-  //   throw "syscall toupper not implemented\n";
+  // These function convert lowecase letters to uppercase, and vice versa.
+  Stack &op_stk = state.m_opStack;
+
+  // 1. Pop argument (pointer to key character)
+  int32_t val = std::get<int32_t>(op_stk.Pop().m_data);
+
+  // 2. Read char from WASM memory and convert to uppercase
+  int32_t res = 0;
+
+  char c = val;
+  if (c >= 'a' && c <= 'z') {
+    res = c - 'a' + 'A';
+  } else {
+    res = c;
+  }
+
+  Data ret{};
+  ret.m_data = res;
+  op_stk.Push(ret);
+
   state.m_instrPointer++;
-  return STATUS::ERROR_TOUPPER;
+  return STATUS::OK;
 }
 // sprintf
 constexpr STATUS SPRINTF(State &state) {
@@ -372,8 +391,6 @@ constexpr STATUS PRINTF(State &state) {
       break;
     }
   }
-
-  frameBuffer.m_data[frameBuffer.m_framePtr++] = '\0';
 
   Data ret{};
   ret.m_data = static_cast<int32_t>(frameBuffer.m_framePtr - out_pos);
@@ -654,22 +671,23 @@ constexpr STATUS CALLOC(State &state) {
 
   // 1. Pop argument (size of memory to alloc)
   int32_t size = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t nmemb = std::get<int32_t>(op_stk.Pop().m_data);
 
   // TODO: Fix this to get ptr dynamically
   // 2. get a place to save result to
   int32_t ptr = state.m_heap.m_heapPtr;
 
   // Set to zero
-  for (int i = 0; i < size; i++) {
+  for (int i = 0; i < size * nmemb; i++) {
     state.m_memory.m_data[i + ptr] = 0;
   }
 
   // 3. Increase the ptr
-  state.m_heap.m_heapPtr += size;
+  state.m_heap.m_heapPtr += size * nmemb;
 
   // 4. Push return value (pointer)
   Data ret{};
-  if (size == 0) {
+  if (size * nmemb == 0) {
     ret.m_data = int32_t{0};
   } else {
     ret.m_data = ptr;
@@ -719,9 +737,20 @@ constexpr STATUS ATOI(State &state) {
 }
 // putchar
 constexpr STATUS PUTCHAR(State &state) {
-  //   throw "syscall putchar not implemented\n";
+  // putchar(c) is equivalent to putc(c, stdout).
+  Stack &op_stk = state.m_opStack;
+  FrameBuffer &frameBuffer = state.m_frameBuffer;
+
+  int32_t chr = std::get<int32_t>(op_stk.Pop().m_data);
+
+  frameBuffer.m_data[frameBuffer.m_framePtr++] = chr;
+  
+  Data ret{};
+  ret.m_data = chr;
+  op_stk.Push(ret);
+
   state.m_instrPointer++;
-  return STATUS::ERROR_PUTCHAR;
+  return STATUS::OK;
 }
 // getchar
 constexpr STATUS GETCHAR(State &state) {
@@ -812,7 +841,7 @@ constexpr STATUS OPEN(State &state) {
     desc.m_fdTable[fileDescriptor].m_open = true;
     desc.m_fdTable[fileDescriptor].m_offset = 0;
     // TODO: update size based on actual file size
-    desc.m_fdTable[fileDescriptor].m_size = 28795076; // size of doom1.wad
+    desc.m_fdTable[fileDescriptor].m_size = 524779; // size of doom1.wad
     desc.m_fdTable[fileDescriptor].m_dataPtr = 0;
   }
 
@@ -866,6 +895,7 @@ constexpr STATUS READ(State &state) {
     idx++;
   }
 
+  desc.m_fdTable[handle].m_offset += idx;
   Data ret{};
   ret.m_data = idx; // number of bytes read
   op_stk.Push(ret);
@@ -954,16 +984,23 @@ constexpr STATUS FSTAT(State &state) {
   //  fstat() is identical to stat(), except that the file about which
   //  information is to be retrieved is specified by the file descriptor fd.
 
-  // Memory &memory = state.m_memory;
+  Memory &memory = state.m_memory;
   Stack &op_stk = state.m_opStack;
 
   // Pop in reverse order
-  std::get<int32_t>(op_stk.Pop().m_data); // statPtr
+  int32_t statPtr = std::get<int32_t>(op_stk.Pop().m_data); // statPtr
   std::get<int32_t>(op_stk.Pop().m_data); // handle
 
+  // Write st_size at offset 44 (32-bit Linux stat)
+  int32_t size = 524779;
+  memory.m_data[statPtr + 44] = (size >> 0) & 0xFF;
+  memory.m_data[statPtr + 45] = (size >> 8) & 0xFF;
+  memory.m_data[statPtr + 46] = (size >> 16) & 0xFF;
+  memory.m_data[statPtr + 47] = (size >> 24) & 0xFF;
+
   Data ret{};
-  ret.m_data =
-      int32_t{0}; // success by default, can set to error code if needed
+  // success by default, can set to error code if needed
+  ret.m_data = int32_t{0};
   op_stk.Push(ret);
 
   state.m_instrPointer++;

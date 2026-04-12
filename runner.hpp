@@ -34,36 +34,41 @@ constexpr STATUS loop(State &state) {
     }
     case OP::_local: {
       STATUS res = HandleLocal(state, _op);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "LOCAL Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
     case OP::_global: {
       STATUS res = HandleGlobal(state, _op);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "GLOBAL Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
     case OP::_select: {
       STATUS res = HandleSelect(state);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "Select Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
     case OP::_br_table: {
       STATUS res = HandleBrTable(state, _op);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "Branch Table Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
+
+    // ERROR_MEMCPY, ERROR_FSEEK, ERROR_FTELL, ERROR_FREAD, ERROR_FCLOSE,
+    // ERROR_EXIT, ERROR_MKDIR, ERROR_ATOI, ERROR_GETCHAR,
+    // ERROR_FPRINTF, ERROR_FPUTC, ERROR_FWRITE, ERROR_STRCMP, ERROR_WRITE,
+    // ERROR_FEOF, ERROR_FSCANF, ERROR_SSCANF,
     case OP::_call: {
       STATUS res = HandleCall(state, _op.m_operand);
       if (res == STATUS::ERROR) {
@@ -71,49 +76,100 @@ constexpr STATUS loop(State &state) {
         return STATUS::ERROR;
       } else if (res == STATUS::SYSFUNCERROR) {
         throw "Error in platform implementation function";
-        return STATUS::ISBAD;
+        return STATUS::SYSFUNCERROR;
       } else if (res == STATUS::ISBAD) {
         return STATUS::ISBAD;
+      } else if (res == STATUS::ERROR_MEMCPY) {
+        throw "Memory copy failed in platform implementation function";
+        return STATUS::ERROR_MEMCPY;
+      } else if (res == STATUS::ERROR_FSEEK) {
+        throw "fseek failed in platform implementation function";
+        return STATUS::ERROR_FSEEK;
+      } else if (res == STATUS::ERROR_FTELL) {
+        throw "ftell failed in platform implementation function";
+        return STATUS::ERROR_FTELL;
+      } else if (res == STATUS::ERROR_FREAD) {
+        throw "fread failed in platform implementation function";
+        return STATUS::ERROR_FREAD;
+      } else if (res == STATUS::ERROR_FCLOSE) {
+        throw "fclose failed in platform implementation function";
+        return STATUS::ERROR_FCLOSE;
+      } else if (res == STATUS::ERROR_EXIT) {
+        throw "exit called in platform implementation function";
+        return STATUS::ERROR_EXIT;
+      } else if (res == STATUS::ERROR_MKDIR) {
+        throw "mkdir failed in platform implementation function";
+        return STATUS::ERROR_MKDIR;
+      } else if (res == STATUS::ERROR_ATOI) {
+        throw "atoi failed in platform implementation function";
+        return STATUS::ERROR_ATOI;
+      } else if (res == STATUS::ERROR_GETCHAR) {
+        throw "getchar failed in platform implementation function";
+        return STATUS::ERROR_GETCHAR;
+      } else if (res == STATUS::ERROR_FPRINTF) {
+        throw "fprintf failed in platform implementation function";
+        return STATUS::ERROR_FPRINTF;
+      } else if (res == STATUS::ERROR_FPUTC) {
+        throw "fputc failed in platform implementation function";
+        return STATUS::ERROR_FPUTC;
+      } else if (res == STATUS::ERROR_FWRITE) {
+        throw "fwrite failed in platform implementation function";
+        return STATUS::ERROR_FWRITE;
+      } else if (res == STATUS::ERROR_STRCMP) {
+        throw "strcmp failed in platform implementation function";
+        return STATUS::ERROR_STRCMP;
+      } else if (res == STATUS::ERROR_WRITE) {
+        throw "write failed in platform implementation function";
+        return STATUS::ERROR_WRITE;
+      } else if (res == STATUS::ERROR_FEOF) {
+        throw "feof failed in platform implementation function";
+        return STATUS::ERROR_FEOF;
+      } else if (res == STATUS::ERROR_FSCANF) {
+        throw "fscanf failed in platform implementation function";
+        return STATUS::ERROR_FSCANF;
+      } else if (res == STATUS::ERROR_SSCANF) {
+        throw "sscanf failed in platform implementation function";
+        return STATUS::ERROR_SSCANF;
       }
       break;
     }
     case OP::_i32: {
       STATUS res = HandleI<int32_t>(state, _op);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "I32 Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
     case OP::_i64: {
       STATUS res = HandleI<int64_t>(state, _op);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "I64 Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
     case OP::_f32: {
       STATUS res = HandleF<float>(state, _op);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "F32 Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
     case OP::_f64: {
       STATUS res = HandleF<double>(state, _op);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "F64 Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
     case OP::_return: {
       STATUS res = HandleReturn(state);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "RETURN Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
@@ -123,49 +179,49 @@ constexpr STATUS loop(State &state) {
     }
     case OP::_block: {
       STATUS res = HandleBlock(state);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "BLOCK Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
     case OP::_br: {
       STATUS res = HandleBranch(state, _op);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "BRANCH Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
     case OP::_br_if: {
       STATUS res = HandleBranchIf(state, _op);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "BRANCHIF Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
     case OP::_end: {
       STATUS res = HandleEnd(state);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "END Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
     case OP::_loop: {
       STATUS res = HandleLoop(state);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "Loop Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }
     case OP::_call_indirect: {
       STATUS res = HandleCallIndirect(state);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "CallIndirect Call Handling Failed!";
-        return STATUS::ERROR;
+        return res;
       }
       break;
     }

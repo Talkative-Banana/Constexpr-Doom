@@ -87,9 +87,24 @@ constexpr STATUS I_INIT(State &state) {
   return STATUS::SYSFUNCERROR;
 }
 
+constexpr int32_t alloc_zeroed(State &state, int32_t size) {
+  int32_t ptr = state.m_heap.m_heapPtr;
+  state.m_heap.m_heapPtr += size;
+  for (int32_t i = 0; i < size; i++)
+    state.m_memory.m_data[ptr + i] = 0;
+  return ptr;
+}
+
 constexpr STATUS I_ALLOCLOW(State &state) {
   // Just a zero memory allocator
-  return CALLOC(state);
+  Stack &op_stk = state.m_opStack;
+  int32_t length = std::get<int32_t>(op_stk.Pop().m_data);
+
+  Data ret{};
+  ret.m_data = alloc_zeroed(state, length);
+  op_stk.Push(ret);
+  state.m_instrPointer++;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_ZONEBASE(State &state) {
