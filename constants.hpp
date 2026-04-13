@@ -3,10 +3,10 @@
 
 static constexpr int MAXMODULES = 8;
 static constexpr int BRTABLESIZE = 1024;
-static constexpr int BLOCKSIZE = 128;
+static constexpr int BLOCKSIZE = 1024;
 static constexpr int MAXCHILDREN = 4096;
 static constexpr int LOCALINSTRSIZE = 128;
-static constexpr int BLOCKSTACKSIZE = 128;
+static constexpr int BLOCKSTACKSIZE = 1024;
 static constexpr int MAXNUMPARAMS = 512;
 static constexpr int GCSIZE = 8192;
 static constexpr int LBUFF = 4096;

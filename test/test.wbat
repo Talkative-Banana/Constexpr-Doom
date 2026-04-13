@@ -6248,6 +6248,7 @@
     i32.const 17062
     call $puts
     drop
+    halt
     call $I_Init
     i32.const 14241
     call $puts

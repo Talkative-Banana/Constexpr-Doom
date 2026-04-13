@@ -291,10 +291,11 @@ constexpr STATUS HandleBranchIf(State &state, Instr &instr) {
       throw "jmp address is 0";
     }
     if (block.m_isLoop) {
-      state.m_instrPointer =
-          block.m_blockStart; // Jump to beginnig of the block
+      // Jump to beginnig of the block
+      state.m_instrPointer = block.m_blockStart;
     } else {
-      state.m_instrPointer = block.m_blockEnd + 1; // Jump to end of block
+      // Jump to end of block
+      state.m_instrPointer = block.m_blockEnd + 1;
     }
   } else {
     state.m_instrPointer++;
