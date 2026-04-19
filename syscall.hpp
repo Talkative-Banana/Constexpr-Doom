@@ -226,6 +226,30 @@ constexpr STATUS SPRINTF(State &state) {
     }
 
     ++i;
+
+    // skip flags: -, +, space, 0
+    int zero_pad = 0;
+    while (memory.m_data[i] == '-' || memory.m_data[i] == '0' ||
+           memory.m_data[i] == '+' || memory.m_data[i] == ' ') {
+      if (memory.m_data[i] == '0')
+        zero_pad = 1;
+      i++;
+    }
+
+    // parse width
+    int width = 0;
+    while (memory.m_data[i] >= '0' && memory.m_data[i] <= '9')
+      width = width * 10 + (memory.m_data[i++] - '0');
+
+    // parse precision
+    int precision = -1;
+    if (memory.m_data[i] == '.') {
+      i++;
+      precision = 0;
+      while (memory.m_data[i] >= '0' && memory.m_data[i] <= '9')
+        precision = precision * 10 + (memory.m_data[i++] - '0');
+    }
+
     char spec = memory.m_data[i];
     if (spec == '\0')
       break;
@@ -240,7 +264,26 @@ constexpr STATUS SPRINTF(State &state) {
       int32_t val = 0;
       if (!read_vararg(val))
         throw "Error reading vararg for sprintf";
-      out_pos += write_int(memory, buf_ptr + out_pos, val);
+      // compute digits
+      std::array<char, 12> tmp{};
+      int len = 0;
+      bool neg = val < 0;
+      int32_t uval = neg ? -val : val;
+      if (uval == 0)
+        tmp[len++] = '0';
+      while (uval > 0) {
+        tmp[len++] = '0' + (uval % 10);
+        uval /= 10;
+      }
+      // zero pad to precision or width
+      int pad = precision >= 0 ? precision : (zero_pad ? width : 0);
+      while (len < pad)
+        tmp[len++] = '0';
+      if (neg)
+        tmp[len++] = '-';
+      // write reversed
+      for (int j = len - 1; j >= 0; j--)
+        memory.m_data[buf_ptr + out_pos++] = tmp[j];
       break;
     }
 
@@ -250,13 +293,10 @@ constexpr STATUS SPRINTF(State &state) {
         throw "Error reading string pointer for sprintf";
       if (str_ptr < 0 || str_ptr >= MEMORYSIZE)
         throw "Invalid string pointer for sprintf";
-
       for (int j = 0; str_ptr + j < MEMORYSIZE; ++j) {
         char ch = memory.m_data[str_ptr + j];
         if (ch == '\0')
           break;
-        if (buf_ptr + out_pos >= MEMORYSIZE)
-          throw "Buffer overflow in sprintf";
         memory.m_data[buf_ptr + out_pos++] = ch;
       }
       break;
@@ -266,15 +306,11 @@ constexpr STATUS SPRINTF(State &state) {
       int32_t val = 0;
       if (!read_vararg(val))
         throw "Error reading vararg for sprintf";
-      if (buf_ptr + out_pos >= MEMORYSIZE)
-        throw "Buffer overflow in sprintf";
       memory.m_data[buf_ptr + out_pos++] = static_cast<char>(val);
       break;
     }
 
     default:
-      if (buf_ptr + out_pos + 1 >= MEMORYSIZE)
-        throw "Buffer overflow in sprintf";
       memory.m_data[buf_ptr + out_pos++] = '%';
       memory.m_data[buf_ptr + out_pos++] = spec;
       break;
@@ -294,9 +330,30 @@ constexpr STATUS SPRINTF(State &state) {
 }
 // memcpy
 constexpr STATUS MEMCPY(State &state) {
-  //   throw "syscall memcpy not implemented\n";
+  // The memcpy() function copies n bytes from memory area src to memory area
+  // dest.  The memory areas must not overlap.
+  Memory &memory = state.m_memory;
+  Stack &op_stk = state.m_opStack;
+
+  // 1. Pop arguments (dest, src, n)
+  int32_t n = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t src = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t dest = std::get<int32_t>(op_stk.Pop().m_data);
+
+  // 2. Copy bytes in memory
+  if (src >= 0 && src + n <= MEMORYSIZE && dest >= 0 &&
+      dest + n <= MEMORYSIZE) {
+    for (int i = 0; i < n; i++) {
+      memory.m_data[dest + i] = memory.m_data[src + i];
+    }
+  }
+
+  Data ret{};
+  ret.m_data = dest;
+  op_stk.Push(ret);
+
   state.m_instrPointer++;
-  return STATUS::ERROR_MEMCPY;
+  return STATUS::OK;
 }
 // printf
 constexpr STATUS PRINTF(State &state) {
@@ -760,9 +817,24 @@ constexpr STATUS GETCHAR(State &state) {
 }
 // fprintf
 constexpr STATUS FPRINTF(State &state) {
-  //   throw "syscall fprintf not implemented\n";
+  // fprintf() and vfprintf() write output to the given output stream
+  Stack &op_stk = state.m_opStack;
+
+  // TODO: Implement properly with FILE* handling. For now, just pop the
+  // arguments and return 0. Stack: [varargs?], [fmt], [FILE*]
+  bool has_varargs = (op_stk.m_vargCount >= 3);
+  if (has_varargs) {
+    op_stk.Pop(); // varargs
+  }
+  op_stk.Pop(); // fmt
+  op_stk.Pop(); // FILE*
+
+  Data ret{};
+  ret.m_data = int32_t{0};
+  op_stk.Push(ret);
+
   state.m_instrPointer++;
-  return STATUS::ERROR_FPRINTF;
+  return STATUS::OK;
 }
 // fputc
 constexpr STATUS FPUTC(State &state) {
@@ -993,10 +1065,10 @@ constexpr STATUS FSTAT(State &state) {
 
   // Write st_size at offset 44 (32-bit Linux stat)
   int32_t size = 524779;
-  memory.m_data[statPtr + 44] = (size >> 0) & 0xFF;
-  memory.m_data[statPtr + 45] = (size >> 8) & 0xFF;
-  memory.m_data[statPtr + 46] = (size >> 16) & 0xFF;
-  memory.m_data[statPtr + 47] = (size >> 24) & 0xFF;
+  memory.m_data[statPtr + 0] = (size >> 0) & 0xFF;
+  memory.m_data[statPtr + 1] = (size >> 8) & 0xFF;
+  memory.m_data[statPtr + 2] = (size >> 16) & 0xFF;
+  memory.m_data[statPtr + 3] = (size >> 24) & 0xFF;
 
   Data ret{};
   // success by default, can set to error code if needed

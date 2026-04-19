@@ -214,7 +214,12 @@ constexpr STATUS HandleBlock(State &state) {
     throw "Block Idx not found";
   }
 
-  f->Push(blockId);
+  // Only push if top of block stack isn't already this block
+  if (f->m_blockStackPointer >= BLOCKSTACKSIZE ||
+      f->m_blockStack[f->m_blockStackPointer] != blockId) {
+    f->Push(blockId);
+  }
+
   state.m_instrPointer++;
   return STATUS::OK;
 }

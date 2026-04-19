@@ -79,9 +79,6 @@ constexpr STATUS loop(State &state) {
         return STATUS::SYSFUNCERROR;
       } else if (res == STATUS::ISBAD) {
         return STATUS::ISBAD;
-      } else if (res == STATUS::ERROR_MEMCPY) {
-        throw "Memory copy failed in platform implementation function";
-        return STATUS::ERROR_MEMCPY;
       } else if (res == STATUS::ERROR_FSEEK) {
         throw "fseek failed in platform implementation function";
         return STATUS::ERROR_FSEEK;
@@ -106,9 +103,6 @@ constexpr STATUS loop(State &state) {
       } else if (res == STATUS::ERROR_GETCHAR) {
         throw "getchar failed in platform implementation function";
         return STATUS::ERROR_GETCHAR;
-      } else if (res == STATUS::ERROR_FPRINTF) {
-        throw "fprintf failed in platform implementation function";
-        return STATUS::ERROR_FPRINTF;
       } else if (res == STATUS::ERROR_FPUTC) {
         throw "fputc failed in platform implementation function";
         return STATUS::ERROR_FPUTC;

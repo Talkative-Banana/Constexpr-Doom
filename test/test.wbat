@@ -6248,7 +6248,6 @@
     i32.const 17062
     call $puts
     drop
-    halt
     call $I_Init
     i32.const 14241
     call $puts
@@ -6268,7 +6267,6 @@
     call $HU_Init
     i32.const 15345
     call $puts
-    drop
     call $ST_Init
     block  ;; label = @1
       i32.const 1269

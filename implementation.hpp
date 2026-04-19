@@ -84,7 +84,7 @@ constexpr STATUS I_QUIT(State &state) {
 
 constexpr STATUS I_INIT(State &state) {
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr int32_t alloc_zeroed(State &state, int32_t size) {
@@ -140,8 +140,40 @@ constexpr STATUS I_NETCMD(State &state) {
 }
 
 constexpr STATUS I_INITNETWORK(State &state) {
+  auto &mem = state.m_memory.m_data;
+
+  int32_t doomcomAddr = state.m_heap.m_heapPtr;
+  state.m_heap.m_heapPtr += 128; // sizeof(doomcom_t) with data field
+
+  for (int i = 0; i < 128; i++)
+    mem[doomcomAddr + i] = 0;
+
+  auto writeI32 = [&](int32_t addr, int32_t val) {
+    mem[addr + 0] = (val >> 0) & 0xFF;
+    mem[addr + 1] = (val >> 8) & 0xFF;
+    mem[addr + 2] = (val >> 16) & 0xFF;
+    mem[addr + 3] = (val >> 24) & 0xFF;
+  };
+
+  auto writeI16 = [&](int32_t addr, int16_t val) {
+    mem[addr + 0] = (val >> 0) & 0xFF;
+    mem[addr + 1] = (val >> 8) & 0xFF;
+  };
+
+  writeI32(doomcomAddr + 0, 0x12345678); // id
+  writeI16(doomcomAddr + 12, 1);         // numnodes
+  writeI16(doomcomAddr + 14, 1);         // ticdup
+  writeI16(doomcomAddr + 22, 1);         // episode
+  writeI16(doomcomAddr + 24, 1);         // map
+  writeI16(doomcomAddr + 26, 2);         // skill
+  writeI16(doomcomAddr + 28, 0);         // consoleplayer
+  writeI16(doomcomAddr + 30, 1);         // numplayers
+
+  writeI32(152404, doomcomAddr); // doomcom pointer
+  writeI32(155824, 0);           // netgame = false
+
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_BASETICCMD(State &state) {
@@ -160,12 +192,15 @@ constexpr STATUS I_SUBMITSOUND(State &state) {
 }
 constexpr STATUS I_SETCHANNELS(State &state) {
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_SETMUSICVOLUME(State &state) {
+  // pop ttthe volume param
+  Stack &op_stk = state.m_opStack;
+  op_stk.Pop();
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_SOUNDISPLAYING(State &state) {
