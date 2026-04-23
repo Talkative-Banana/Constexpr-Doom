@@ -6265,6 +6265,7 @@
     call $puts
     drop
     call $HU_Init
+    halt
     i32.const 15345
     call $puts
     call $ST_Init

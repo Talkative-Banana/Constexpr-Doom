@@ -16,17 +16,17 @@ from typing import Optional, Union
 # ──────────────────────────────────────────────────────────────
 #  Constants — keep in sync with constants.hpp
 # ──────────────────────────────────────────────────────────────
-MAXFUNCTIONS        = 4096
-GLOBALSIZE          = 1024
-MEMORYSIZE          = 2147483647
-MAXVIRTUALTABLESIZE = 4096
-STACKSIZE           = 2147483647
-BLOCKSIZE           = 1024
-BLOCKSTACKSIZE      = 1024
-MAXNUMPARAMS        = 512
-BRTABLESIZE         = 1024
+MAXFUNCTIONS        = 800
+GLOBALSIZE          = 650
+MEMORYSIZE          = 1024 * 1024 * 8
+MAXVIRTUALTABLESIZE = 700
+STACKSIZE           = 1024 * 528
+BLOCKSIZE           = 512
+BLOCKSTACKSIZE      = 512
+MAXNUMPARAMS        = 32
+BRTABLESIZE         = 512
 FDTABLE             = 16
-FILESYSTEMSIZE     = 1024 * 1024 * 64   # 64 MB
+FILESYSTEMSIZE     = 1024 * 600   # 600 KB
 
 # ──────────────────────────────────────────────────────────────
 #  Enums

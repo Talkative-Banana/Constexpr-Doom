@@ -71,59 +71,9 @@ constexpr STATUS loop(State &state) {
     // ERROR_FEOF, ERROR_FSCANF, ERROR_SSCANF,
     case OP::_call: {
       STATUS res = HandleCall(state, _op.m_operand);
-      if (res == STATUS::ERROR) {
+      if (res != STATUS::OK) {
         throw "CALL Call Handling Failed!";
-        return STATUS::ERROR;
-      } else if (res == STATUS::SYSFUNCERROR) {
-        throw "Error in platform implementation function";
-        return STATUS::SYSFUNCERROR;
-      } else if (res == STATUS::ISBAD) {
-        return STATUS::ISBAD;
-      } else if (res == STATUS::ERROR_FSEEK) {
-        throw "fseek failed in platform implementation function";
-        return STATUS::ERROR_FSEEK;
-      } else if (res == STATUS::ERROR_FTELL) {
-        throw "ftell failed in platform implementation function";
-        return STATUS::ERROR_FTELL;
-      } else if (res == STATUS::ERROR_FREAD) {
-        throw "fread failed in platform implementation function";
-        return STATUS::ERROR_FREAD;
-      } else if (res == STATUS::ERROR_FCLOSE) {
-        throw "fclose failed in platform implementation function";
-        return STATUS::ERROR_FCLOSE;
-      } else if (res == STATUS::ERROR_EXIT) {
-        throw "exit called in platform implementation function";
-        return STATUS::ERROR_EXIT;
-      } else if (res == STATUS::ERROR_MKDIR) {
-        throw "mkdir failed in platform implementation function";
-        return STATUS::ERROR_MKDIR;
-      } else if (res == STATUS::ERROR_ATOI) {
-        throw "atoi failed in platform implementation function";
-        return STATUS::ERROR_ATOI;
-      } else if (res == STATUS::ERROR_GETCHAR) {
-        throw "getchar failed in platform implementation function";
-        return STATUS::ERROR_GETCHAR;
-      } else if (res == STATUS::ERROR_FPUTC) {
-        throw "fputc failed in platform implementation function";
-        return STATUS::ERROR_FPUTC;
-      } else if (res == STATUS::ERROR_FWRITE) {
-        throw "fwrite failed in platform implementation function";
-        return STATUS::ERROR_FWRITE;
-      } else if (res == STATUS::ERROR_STRCMP) {
-        throw "strcmp failed in platform implementation function";
-        return STATUS::ERROR_STRCMP;
-      } else if (res == STATUS::ERROR_WRITE) {
-        throw "write failed in platform implementation function";
-        return STATUS::ERROR_WRITE;
-      } else if (res == STATUS::ERROR_FEOF) {
-        throw "feof failed in platform implementation function";
-        return STATUS::ERROR_FEOF;
-      } else if (res == STATUS::ERROR_FSCANF) {
-        throw "fscanf failed in platform implementation function";
-        return STATUS::ERROR_FSCANF;
-      } else if (res == STATUS::ERROR_SSCANF) {
-        throw "sscanf failed in platform implementation function";
-        return STATUS::ERROR_SSCANF;
+        return res;
       }
       break;
     }
@@ -232,11 +182,13 @@ inline constexpr auto ParseAndRun() {
   auto res = ParseProgram(program);
   int m_count = res.first;
 
-  if (m_count == 0)
+  if (m_count == 0) {
     throw "No module found";
+  }
 
-  if (m_count > MAXMODULES)
+  if (m_count > MAXMODULES) {
     throw "Too many modules found";
+  }
 
   // max MAXCHILDREN module children and MAXMODULES modules
   // Validate Modules
@@ -307,11 +259,13 @@ inline constexpr auto ParseAndRunNoCheck() {
   auto res = ParseProgramNoCheck(program);
   int m_count = res.first;
 
-  if (m_count == 0)
+  if (m_count == 0) {
     throw "No module found";
+  }
 
-  if (m_count > MAXMODULES)
+  if (m_count > MAXMODULES) {
     throw "Too many modules found";
+  }
 
   // max MAXCHILDREN module children and MAXMODULES modules
   // Validate Modules
