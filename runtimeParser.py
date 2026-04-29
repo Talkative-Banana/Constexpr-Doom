@@ -617,8 +617,9 @@ def emit_state(state: ParsedState, var: str = "state") -> str:
                 w(f"    {r}.m_operandValueDecimal = {cpp_float(instr.operand_value_dec)};")
             if instr.br_count:
                 w(f"    {r}.m_brCount             = {instr.br_count};")
-                for bi, bv in enumerate(instr.br_table):
-                    w(f"    {r}.m_brTable[{bi}]          = {bv};")
+                w(f"    {r}.m_brTableOffset       = {var}.m_brTablePool.m_ptr;")
+                for bv in instr.br_table:
+                    w(f"    {var}.m_brTablePool.m_data[{var}.m_brTablePool.m_ptr++] = {bv};")
         # block table
         for bi, blk in enumerate(fn.block_table):
             r = f"F.m_blockTable[{bi}]"

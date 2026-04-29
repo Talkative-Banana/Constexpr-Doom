@@ -3985,6 +3985,7 @@
     call $V_DrawPatch)
   (func $D_DoomLoop (type 2)
     (local i32)
+    halt
     global.get $__stack_pointer
     i32.const 64
     i32.sub
@@ -6265,7 +6266,6 @@
     call $puts
     drop
     call $HU_Init
-    halt
     i32.const 15345
     call $puts
     call $ST_Init

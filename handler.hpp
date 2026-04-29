@@ -261,11 +261,9 @@ constexpr STATUS HandleBrTable(State &state, const Instr &instr) {
 
   // m_operandValue is the count
   int32_t target;
-  if (idx <= instr.m_brCount - 1) {
-    target = instr.m_brTable[idx];
-  } else {
-    target = instr.m_brTable[instr.m_brCount - 1]; // default
-  }
+  uint32_t clampedIdx =
+      (idx <= instr.m_brCount - 1) ? idx : instr.m_brCount - 1;
+  target = state.m_brTablePool.m_data[instr.m_brTableOffset + clampedIdx];
 
   Instr newInstr{};
   newInstr.m_op = OP::_br;

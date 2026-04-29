@@ -6,7 +6,6 @@
 #include <variant>
 
 struct L1Cache {};
-
 struct L2Cache {};
 
 struct Data {
@@ -16,7 +15,6 @@ struct Data {
 
 constexpr double ParseHexDecimal(std::string_view operand) {
   std::string_view s = operand;
-  // strip (;...;) comment
   size_t commentPos = s.find("(;");
   if (commentPos != std::string_view::npos) {
     s = s.substr(0, commentPos);
@@ -30,15 +28,13 @@ constexpr double ParseHexDecimal(std::string_view operand) {
     neg = true;
     operand.remove_prefix(1);
   }
-  // skip "0x"
-  operand.remove_prefix(2);
+  operand.remove_prefix(2); // skip "0x"
 
   double mantissa = 0.0f;
   double frac = 1.0f;
   bool hasDot = false;
   size_t i = 0;
 
-  // parse hex mantissa
   for (; i < operand.size(); i++) {
     char c = operand[i];
     if (c == 'p' || c == 'P')
@@ -58,35 +54,44 @@ constexpr double ParseHexDecimal(std::string_view operand) {
     }
   }
 
-  // parse exponent after 'p'
   i++; // skip 'p'
   int expSign = 1;
-  if (operand[i] == '+') {
+  if (i < operand.size() && operand[i] == '+') {
     i++;
-  } else if (operand[i] == '-') {
+  } else if (i < operand.size() && operand[i] == '-') {
     expSign = -1;
     i++;
   }
 
   int exp = 0;
-  for (; i < operand.size(); i++) {
+  for (; i < operand.size(); i++)
     exp = exp * 10 + (operand[i] - '0');
-  }
   exp *= expSign;
 
-  // apply exponent (2^exp)
   double result = mantissa;
   if (exp > 0) {
-    for (int j = 0; j < exp; j++) {
+    for (int j = 0; j < exp; j++)
       result *= 2.0f;
-    }
   } else {
-    for (int j = 0; j < -exp; j++) {
+    for (int j = 0; j < -exp; j++)
       result /= 2.0f;
-    }
   }
   return neg ? -result : result;
 }
+
+struct BrTablePool {
+  std::array<uint32_t, BRTABLESIZE * 64>
+      m_data{}; // 512*64 = 32768 entries = 128 KB
+  uint32_t m_ptr = 0;
+
+  constexpr uint32_t Alloc(uint32_t count) {
+    uint32_t offset = m_ptr;
+    m_ptr += count;
+    if (m_ptr > m_data.size())
+      throw "BrTablePool overflow";
+    return offset;
+  }
+};
 
 struct Instr {
   OP m_op{};
@@ -96,130 +101,135 @@ struct Instr {
   int64_t m_operandValue{};
   double m_operandValueDecimal{};
   int32_t m_brCount{};
-  std::array<uint32_t, BRTABLESIZE> m_brTable{};
+  int32_t m_brTableOffset{}; // index into BrTablePool, -1 if unused
 
   constexpr Instr() = default;
+
   constexpr Instr(OP op, Member mem, OperandType type, std::string_view operand,
                   int64_t operandValue = 0)
       : m_op(op), m_mem(mem), m_type(type), m_operand(operand),
-        m_operandValue(operandValue), m_operandValueDecimal(0.0) {}
+        m_operandValue(operandValue), m_operandValueDecimal(0.0), m_brCount(0),
+        m_brTableOffset(-1) {}
+
+  // Main parsing constructor — does NOT handle br_table entries.
+  // br_table entries are written into BrTablePool by Function::AddInstr().
   constexpr Instr(std::string_view op, std::string_view operand)
-      : m_operand(operand) {
+      : m_operand(operand), m_brTableOffset(-1) {
+
     size_t pos = op.find(".");
     std::string_view _op = op.substr(0, pos);
     std::string_view _mem;
-    if (pos != std::string_view::npos) {
+    if (pos != std::string_view::npos)
       _mem = op.substr(pos + 1);
-    }
 
-    // Set the operation
-    if (_op == "local") {
+    // ── set OP ──
+    if (_op == "local")
       m_op = OP::_local;
-    } else if (_op == "global") {
+    else if (_op == "global")
       m_op = OP::_global;
-    } else if (_op == "i32") {
+    else if (_op == "i32")
       m_op = OP::_i32;
-    } else if (_op == "i64") {
+    else if (_op == "i64")
       m_op = OP::_i64;
-    } else if (_op == "f32") {
+    else if (_op == "f32")
       m_op = OP::_f32;
-    } else if (_op == "f64") {
+    else if (_op == "f64")
       m_op = OP::_f64;
-    } else if (_op == "return") {
+    else if (_op == "return")
       m_op = OP::_return;
-    } else if (_op == "call") {
+    else if (_op == "call")
       m_op = OP::_call;
-    } else if (_op == "halt") {
+    else if (_op == "halt")
       m_op = OP::_unreachable;
-    } else if (_op == "unreachable") {
+    else if (_op == "unreachable")
       m_op = OP::_unreachable;
-    } else if (_op == "block") {
+    else if (_op == "block")
       m_op = OP::_block;
-    } else if (_op == "loop") {
+    else if (_op == "loop")
       m_op = OP::_loop;
-    } else if (_op == "br_if") {
+    else if (_op == "br_if")
       m_op = OP::_br_if;
-    } else if (_op == "br") {
+    else if (_op == "br")
       m_op = OP::_br;
-    } else if (_op == "end") {
+    else if (_op == "end")
       m_op = OP::_end;
-    } else if (_op == "call_indirect") {
+    else if (_op == "call_indirect")
       m_op = OP::_call_indirect;
-    } else if (_op == "drop") {
+    else if (_op == "drop")
       m_op = OP::_drop;
-    } else if (_op == "select") {
+    else if (_op == "select")
       m_op = OP::_select;
-    } else if (_op == "br_table") {
+    else if (_op == "br_table")
       m_op = OP::_br_table;
-    } else {
-      throw "Local instructions not supported yet";
-    }
+    else
+      throw "Opcode not supported";
 
-    // Early return in case of block elements
-    if (m_op == OP::_block || m_op == OP::_loop || m_op == OP::_select) {
+    // block/loop/select have no member or immediate
+    if (m_op == OP::_block || m_op == OP::_loop || m_op == OP::_select)
       return;
-    }
+
+    // br_table: entries are parsed later by Function::AddInstr — just return
+    if (m_op == OP::_br_table)
+      return;
 
     bool is_LoadStore = false;
-    // Set the member
+
+    // ── set Member ──
     if (pos == std::string_view::npos) {
-      // No member
       m_mem = Member::_none;
-    } else if (_mem == "get") {
+    } else if (_mem == "get")
       m_mem = Member::_get;
-    } else if (_mem == "set") {
+    else if (_mem == "set")
       m_mem = Member::_set;
-    } else if (_mem == "tee") {
+    else if (_mem == "tee")
       m_mem = Member::_tee;
-    } else if (_mem == "const") {
+    else if (_mem == "const")
       m_mem = Member::_const;
-    } else if (_mem == "add") {
+    else if (_mem == "add")
       m_mem = Member::_add;
-    } else if (_mem == "sub") {
+    else if (_mem == "sub")
       m_mem = Member::_sub;
-    } else if (_mem == "sub") {
-      m_mem = Member::_sub;
-    } else if (_mem == "mul") {
+    else if (_mem == "mul")
       m_mem = Member::_mul;
-    } else if (_mem == "store") {
+    else if (_mem == "store")
       m_mem = Member::_store;
-    } else if (_mem == "load") {
+    else if (_mem == "load")
       m_mem = Member::_load;
-    } else if (_mem == "le_s") {
+    else if (_mem == "le_s")
       m_mem = Member::_le_s;
-    } else if (_mem == "le_u") {
+    else if (_mem == "le_u")
       m_mem = Member::_le_u;
-    } else if (_mem == "lt_s") {
+    else if (_mem == "lt_s")
       m_mem = Member::_lt_s;
-    } else if (_mem == "lt_u") {
+    else if (_mem == "lt_u")
       m_mem = Member::_lt_u;
-    } else if (_mem == "and") {
+    else if (_mem == "and")
       m_mem = Member::_and;
-    } else if (_mem == "eqz") {
+    else if (_mem == "eqz")
       m_mem = Member::_eqz;
-    } else if (_mem == "eq") {
+    else if (_mem == "eq")
       m_mem = Member::_eq;
-    } else if (_mem == "xor") {
+    else if (_mem == "xor")
       m_mem = Member::_xor;
-    } else if (_mem == "or") {
+    else if (_mem == "or")
       m_mem = Member::_or;
-    } else if (_mem == "rem_s") {
+    else if (_mem == "rem_s")
       m_mem = Member::_rem_s;
-    } else if (_mem == "rem_u") {
+    else if (_mem == "rem_u")
       m_mem = Member::_rem_u;
-    } else if (_mem == "shl") {
+    else if (_mem == "shl")
       m_mem = Member::_shl;
-    } else if (_mem == "div_s") {
+    else if (_mem == "div_s")
       m_mem = Member::_div_s;
-    } else if (_mem == "div_u") {
+    else if (_mem == "div_u")
       m_mem = Member::_div_u;
-    } else if (_mem == "ne") {
+    else if (_mem == "ne")
       m_mem = Member::_ne;
-    } else if (_mem == "shr_s") {
+    else if (_mem == "shr_s")
       m_mem = Member::_shr_s;
-    } else if (_mem == "shr_u") {
+    else if (_mem == "shr_u")
       m_mem = Member::_shr_u;
-    } else if (_mem == "load8_u") {
+    else if (_mem == "load8_u") {
       m_mem = Member::_load8_u;
       is_LoadStore = true;
     } else if (_mem == "load8_s") {
@@ -237,201 +247,105 @@ struct Instr {
     } else if (_mem == "store16") {
       m_mem = Member::_store16;
       is_LoadStore = true;
-    } else if (_mem == "gt_s") {
+    } else if (_mem == "gt_s")
       m_mem = Member::_gt_s;
-    } else if (_mem == "gt_u") {
+    else if (_mem == "gt_u")
       m_mem = Member::_gt_u;
-    } else if (_mem == "abs") {
+    else if (_mem == "abs")
       m_mem = Member::_abs;
-    } else if (_mem == "lt") {
+    else if (_mem == "lt")
       m_mem = Member::_lt;
-    } else if (_mem == "trunc_f32_s") {
+    else if (_mem == "trunc_f32_s")
       m_mem = Member::_trunc_f32_s;
-    } else if (_mem == "trunc_f64_s") {
+    else if (_mem == "trunc_f64_s")
       m_mem = Member::_trunc_f64_s;
-    } else if (_mem == "convert_i32_s") {
+    else if (_mem == "convert_i32_s")
       m_mem = Member::_convert_i32_s;
-    } else if (_mem == "convert_i64_s") {
+    else if (_mem == "convert_i64_s")
       m_mem = Member::_convert_i64_s;
-    } else if (_mem == "promote_f32") {
+    else if (_mem == "promote_f32")
       m_mem = Member::_promote_f32;
-    } else if (_mem == "demote_f64") {
+    else if (_mem == "demote_f64")
       m_mem = Member::_demote_f64;
-    } else if (_mem == "extend_i32_s") {
+    else if (_mem == "extend_i32_s")
       m_mem = Member::_extend_i32_s;
-    } else if (_mem == "wrap_i64") {
+    else if (_mem == "wrap_i64")
       m_mem = Member::_wrap_i64;
-    } else if (_mem == "ge_s") {
+    else if (_mem == "ge_s")
       m_mem = Member::_ge_s;
-    } else if (_mem == "ge_u") {
+    else if (_mem == "ge_u")
       m_mem = Member::_ge_u;
-    } else if (_mem == "ge") {
+    else if (_mem == "ge")
       m_mem = Member::_ge;
-    } else if (_mem == "div") {
+    else if (_mem == "div")
       m_mem = Member::_div;
-    } else {
-      throw "Invalid Memeber Parsing";
-    }
+    else
+      throw "Invalid Member Parsing";
 
     bool isInt = (m_op == OP::_i32 || m_op == OP::_i64);
     bool isDec = (m_op == OP::_f32 || m_op == OP::_f64);
     bool isIImm = (isInt && m_mem == Member::_const);
     bool isDImm = (isDec && m_mem == Member::_const);
 
-    if (m_op == OP::_br_table) {
-      std::string_view s = m_operand;
-      m_brCount = 0;
-
-      size_t pos = 0;
-      while (pos < s.size()) {
-        // skip whitespace
-        while (pos < s.size() && s[pos] == ' ') {
-          pos++;
-        }
-
-        if (pos >= s.size()) {
-          break;
-        }
-
-        // skip (;...;) comment
-        if (s[pos] == '(') {
-          size_t end = s.find(";)", pos);
-          if (end != std::string_view::npos) {
-            pos = end + 2;
-          } else {
-            pos++;
-          }
-        }
-
-        // parse number
-        if (s[pos] >= '0' && s[pos] <= '9') {
-          int32_t value = 0;
-          while (pos < s.size() && s[pos] >= '0' && s[pos] <= '9') {
-            value = value * 10 + (s[pos] - '0');
-            pos++;
-          }
-          if (m_brCount >= BRTABLESIZE)
-            throw "br_table overflow";
-          m_brTable[m_brCount++] = value;
-        } else {
-          pos++;
-        }
-      }
-      if (m_brCount == 0) {
-        throw "br_table has no entries";
-      }
-    } else if (isIImm || m_op == OP::_local) {
-      // Parse the operand as an immediate value for local and global
-      // instructions
+    // ── parse immediate ──
+    if (isIImm || m_op == OP::_local || m_op == OP::_global ||
+        m_op == OP::_call) {
       int64_t value = 0;
-      size_t type_pos = 0;
+      size_t i = 0;
       bool isNeg = false;
-      while (type_pos < m_operand.size() &&
-             ((m_operand[type_pos] >= '0' && m_operand[type_pos] <= '9') ||
-              m_operand[type_pos] == '-')) {
-        if (m_operand[type_pos] == '-') {
+      while (i < m_operand.size() &&
+             (m_operand[i] == '-' ||
+              (m_operand[i] >= '0' && m_operand[i] <= '9'))) {
+        if (m_operand[i] == '-') {
           isNeg = true;
-          type_pos++;
+          i++;
           continue;
         }
-        value = value * 10 + (m_operand[type_pos] - '0');
-        type_pos++;
+        value = value * 10 + (m_operand[i++] - '0');
       }
-      if (isNeg) {
-        m_operandValue = -value;
-      } else {
-        m_operandValue = value;
-      }
+      m_operandValue = isNeg ? -value : value;
     } else if (isDImm) {
-      // Parse the operand as an immediate value for local and global
-      // instructions
       m_operandValueDecimal = ParseHexDecimal(operand);
     } else if (m_operand.empty()) {
-      // Set the operand type
       m_type = OperandType::_none;
     } else if (m_operand[0] >= '0' && m_operand[0] <= '9') {
       m_type = OperandType::_immediate;
-      // Parse the immediate value
       int64_t value = 0;
-      size_t type_pos = 0;
+      size_t i = 0;
       bool isNeg = false;
-      while (type_pos < m_operand.size() &&
-             ((m_operand[type_pos] >= '0' && m_operand[type_pos] <= '9') ||
-              m_operand[type_pos] == '-')) {
-        if (m_operand[type_pos] == '-') {
+      while (i < m_operand.size() &&
+             (m_operand[i] == '-' ||
+              (m_operand[i] >= '0' && m_operand[i] <= '9'))) {
+        if (m_operand[i] == '-') {
           isNeg = true;
-          type_pos++;
+          i++;
           continue;
         }
-        value = value * 10 + (m_operand[type_pos] - '0');
-        type_pos++;
+        value = value * 10 + (m_operand[i++] - '0');
       }
-      if (isNeg) {
-        m_operandValue = -value;
-      } else {
-        m_operandValue = value;
-      }
+      m_operandValue = isNeg ? -value : value;
     } else if (m_operand[0] == '$') {
       m_type = OperandType::_address;
     } else if (m_operand[0] == 'o') {
-      // i32 store offset
       m_type = OperandType::_offset;
-      // Parse the immediate value
       int64_t value = 0;
-      size_t type_pos = 7; // skip the offset= part
+      size_t i = 7; // skip "offset="
       bool isNeg = false;
-      while (type_pos < m_operand.size() &&
-             ((m_operand[type_pos] >= '0' && m_operand[type_pos] <= '9') ||
-              m_operand[type_pos] == '-')) {
-        if (m_operand[type_pos] == '-') {
+      while (i < m_operand.size() &&
+             (m_operand[i] == '-' ||
+              (m_operand[i] >= '0' && m_operand[i] <= '9'))) {
+        if (m_operand[i] == '-') {
           isNeg = true;
-          type_pos++;
+          i++;
           continue;
         }
-        value = value * 10 + (m_operand[type_pos] - '0');
-        type_pos++;
+        value = value * 10 + (m_operand[i++] - '0');
       }
-      if (isNeg) {
-        m_operandValue = -value;
-      } else {
-        m_operandValue = value;
-      }
+      m_operandValue = isNeg ? -value : value;
     } else if (m_op == OP::_call_indirect) {
-      // TODO: skip type check for now
-      return;
+      return; // skip type check
     } else if (is_LoadStore) {
-      // no offset
-      m_operandValue = 0; // default
-    } else {
-      OP op = m_op;
-      if (op == OP::_local)
-        throw "isLoadStore: op is local";
-      if (op == OP::_global)
-        throw "isLoadStore: op is global";
-      if (op == OP::_return)
-        throw "isLoadStore: op is return";
-      if (op == OP::_call)
-        throw "isLoadStore: op is call";
-      if (op == OP::_unreachable)
-        throw "isLoadStore: op is unreachable";
-      if (op == OP::_block)
-        throw "isLoadStore: op is block";
-      if (op == OP::_loop)
-        throw "isLoadStore: op is loop";
-      if (op == OP::_br_if)
-        throw "isLoadStore: op is br_if";
-      if (op == OP::_br)
-        throw "isLoadStore: op is br";
-      if (op == OP::_end)
-        throw "isLoadStore: op is end";
-      if (op == OP::_call_indirect)
-        throw "isLoadStore: op is call_indirect";
-      if (op == OP::_drop)
-        throw "isLoadStore: op is drop";
-      if (op == OP::_select)
-        throw "isLoadStore: op is select";
-      if (op == OP::_br_table)
-        throw "isLoadStore: op is br_table";
+      m_operandValue = 0;
     }
   }
 };
@@ -456,7 +370,6 @@ struct Function {
   uint32_t m_bodyCount = 0;
 
   std::array<uint32_t, BLOCKSTACKSIZE> m_blockStack{};
-
   std::array<Block, BLOCKSIZE> m_blockTable{};
   uint32_t m_blockStackPointer = BLOCKSTACKSIZE;
   uint32_t m_blockIdx = 0;
@@ -466,15 +379,59 @@ struct Function {
 
   constexpr void Push(uint32_t idx) {
     if (m_blockStackPointer == 0)
-      throw "Stack overflow";
+      throw "Block stack overflow";
     m_blockStack[--m_blockStackPointer] = idx;
   }
   constexpr Block &Pop() {
     if (m_blockStackPointer == BLOCKSTACKSIZE)
-      throw "Stack underflow";
+      throw "Block stack underflow";
+    return m_blockTable[m_blockStack[m_blockStackPointer++]];
+  }
 
-    uint32_t idx = m_blockStack[m_blockStackPointer++];
-    return m_blockTable[idx];
+  // Call this instead of writing to m_body directly.
+  // Parses br_table entries into the global pool.
+  constexpr void AddInstr(Instr instr, BrTablePool &pool) {
+    if (instr.m_op == OP::_br_table) {
+      instr.m_brTableOffset = static_cast<int32_t>(pool.m_ptr);
+      instr.m_brCount = 0;
+
+      std::string_view s = instr.m_operand;
+      size_t pos = 0;
+      while (pos < s.size()) {
+        // skip whitespace
+        while (pos < s.size() && s[pos] == ' ')
+          pos++;
+        if (pos >= s.size())
+          break;
+
+        // skip (;...;) comments
+        if (s[pos] == '(') {
+          size_t end = s.find(";)", pos);
+          pos = (end != std::string_view::npos) ? end + 2 : pos + 1;
+          continue;
+        }
+
+        // parse number
+        if (s[pos] >= '0' && s[pos] <= '9') {
+          uint32_t value = 0;
+          while (pos < s.size() && s[pos] >= '0' && s[pos] <= '9')
+            value = value * 10 + (s[pos++] - '0');
+          pool.m_data[pool.m_ptr++] = value;
+          instr.m_brCount++;
+          if (pool.m_ptr > pool.m_data.size())
+            throw "BrTablePool overflow";
+        } else {
+          pos++;
+        }
+      }
+
+      if (instr.m_brCount == 0)
+        throw "br_table has no entries";
+    }
+
+    if (m_bodyCount >= m_body.size())
+      throw "Function body overflow";
+    m_body[m_bodyCount++] = instr;
   }
 };
 
@@ -502,15 +459,12 @@ struct Global {
 struct Export {};
 
 struct Stack {
-
-  // Grow the stack downwards
   constexpr void Push(const Data &data) {
     if (m_stackPointer == STACKSIZE)
       throw "Stack overflow";
     m_vargCount++;
     m_data[++m_stackPointer] = data;
   }
-
   constexpr Data Pop() {
     if (m_stackPointer == m_floorPointer)
       throw "Stack underflow";
@@ -538,14 +492,14 @@ struct Heap {
 
 struct FrameBuffer {
   uint32_t m_framePtr = 0;
-  std::array<char, SCREENWIDTH * SCREENHEIGHT> m_data;
+  std::array<char, SCREENWIDTH * SCREENHEIGHT> m_data{};
 };
 
 struct FileDesc {
   bool m_open = false;
-  uint32_t m_offset = 0;  // current read position
-  uint32_t m_size = 0;    // file size
-  uint32_t m_dataPtr = 0; // address in wasm memory where file bytes live
+  uint32_t m_offset = 0;
+  uint32_t m_size = 0;
+  uint32_t m_dataPtr = 0;
 };
 
 struct Descriptor {
@@ -553,9 +507,6 @@ struct Descriptor {
 };
 
 struct FileSystem {
-  // For simplicity, we can pre-load all files into memory at fixed addresses,
-  // and use the open syscall to get pointers to them. The file descriptor can
-  // just be an index into a table that tracks which files are open.
   std::array<char, FILESYSTEMSIZE> m_data{};
 };
 
@@ -569,31 +520,32 @@ struct State {
   FileSystem m_fileSystem{};
   FrameBuffer m_frameBuffer{};
   uint64_t m_instrPointer = 0;
+  BrTablePool m_brTablePool{};
   FunctionTable m_functionTable{};
   VirtualTable m_virtualTable{};
   Function *m_activeFunction = nullptr;
 };
 
 constexpr std::size_t getFunctionId(State &state, std::string_view str) {
-  FunctionTable &funcTable = state.m_functionTable;
-
-  for (int i = 0; i < funcTable.m_count; i++) {
-    Function &f = funcTable.m_data[i];
-    if (f.m_name == str) {
+  FunctionTable &ft = state.m_functionTable;
+  for (int i = 0; i < ft.m_count; i++)
+    if (ft.m_data[i].m_name == str)
       return i;
-    }
-  }
   return 0;
 }
 
 constexpr std::size_t getOperandId(State &state, std::string_view str) {
-  Global &global = state.m_global;
-
-  for (int i = 0; i < global.m_count; i++) {
-    Data &data = global.m_data[i];
-    if (data.m_strId == str) {
+  Global &g = state.m_global;
+  for (int i = 0; i < g.m_count; i++)
+    if (g.m_data[i].m_strId == str)
       return i;
-    }
-  }
   return 0;
+}
+
+constexpr uint32_t brTableJump(State &state, const Instr &instr, uint32_t idx) {
+  if (instr.m_brCount == 0)
+    throw "br_table: no entries";
+  if (idx >= static_cast<uint32_t>(instr.m_brCount))
+    idx = static_cast<uint32_t>(instr.m_brCount) - 1; // default case
+  return state.m_brTablePool.m_data[instr.m_brTableOffset + idx];
 }
