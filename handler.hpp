@@ -34,23 +34,23 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   if (state.m_activeFunction != nullptr) {
     std::size_t funcId = getFunctionId(state, state.m_activeFunction->m_name);
     Data fPtr;
-    fPtr.m_data = static_cast<int32_t>(funcId);
+    fPtr.set(static_cast<int32_t>(funcId));
     // Push function address to return to after function call
     stk.Push(fPtr);
   } else {
     // If there is no active function, we are calling the main function, so push
     // a 0 as the function pointer
     Data fPtr;
-    fPtr.m_data = int32_t{0};
+    fPtr.set(int32_t{0});
     stk.Push(fPtr);
   }
 
   Data iPtr, bPtr;
-  iPtr.m_data = static_cast<int32_t>(state.m_instrPointer + 1);
+  iPtr.set(static_cast<int32_t>(state.m_instrPointer + 1));
   // Push return address to recover it after function call
   stk.Push(iPtr);
 
-  bPtr.m_data = static_cast<int32_t>(stk.m_basePointer);
+  bPtr.set(static_cast<int32_t>(stk.m_basePointer));
   // Push the base ptr to recover it after function call
   stk.Push(bPtr);
 
@@ -80,13 +80,13 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
     ParamType pt = f.m_params[i];
     Data data{};
     if (pt == ParamType::_i32) {
-      data.m_data = int32_t{};
+      data.set(int32_t{});
     } else if (pt == ParamType::_i64) {
-      data.m_data = int64_t{};
+      data.set(int64_t{});
     } else if (pt == ParamType::_f32) {
-      data.m_data = float{};
+      data.set(float{});
     } else if (pt == ParamType::_f64) {
-      data.m_data = double{};
+      data.set(double{});
     } else {
       throw "Unhandled param type";
     }
@@ -159,7 +159,7 @@ constexpr STATUS HandleSelect(State &state) {
   Data val2 = op_stk.Pop();
   Data val1 = op_stk.Pop();
 
-  if (std::get<int32_t>(cond.m_data))
+  if (cond.get<int32_t>())
     op_stk.Push(val1);
   else
     op_stk.Push(val2);
@@ -176,22 +176,22 @@ constexpr STATUS HandleReturn(State &state) {
   Data iPtr = stk.Pop();
   Data fPtr = stk.Pop();
   // Update the instruction pointer and base pointer to return to the caller
-  stk.m_basePointer = std::get<int32_t>(bPtr.m_data);
-  state.m_instrPointer = std::get<int32_t>(iPtr.m_data);
+  stk.m_basePointer = bPtr.get<int32_t>();
+  state.m_instrPointer = iPtr.get<int32_t>();
   // Restore the active function
-  if (std::get<int32_t>(fPtr.m_data) == 0) {
+  if (fPtr.get<int32_t>() == 0) {
     // If the function pointer is 0, it means we are returning from the main
     // function
     state.m_activeFunction = nullptr;
     return STATUS::OK;
   }
 
-  if (std::get<int32_t>(fPtr.m_data) < 0) {
+  if (fPtr.get<int32_t>() < 0) {
     throw "fPtr corrupted";
   }
 
   Function &f = state.m_functionTable
-                    .m_data[std::get<int32_t>(fPtr.m_data) % MAXFUNCTIONS];
+                    .m_data[fPtr.get<int32_t>() % MAXFUNCTIONS];
   state.m_activeFunction = &f;
   return STATUS::OK;
 }
@@ -250,7 +250,7 @@ constexpr STATUS HandleBranch(State &state, Instr &instr) {
 constexpr STATUS HandleBrTable(State &state, const Instr &instr) {
   // pop index
   Data idxData = state.m_opStack.Pop();
-  int32_t idx = std::get<int32_t>(idxData.m_data);
+  int32_t idx = idxData.get<int32_t>();
 
   // clamp to default if out of bounds
   // m_brTable is your array of branch targets
@@ -280,7 +280,7 @@ constexpr STATUS HandleBranchIf(State &state, Instr &instr) {
   Data topInstr = opStack.Pop();
 
   // Check if we want to take branch
-  if (std::get<int32_t>(topInstr.m_data)) {
+  if (topInstr.get<int32_t>()) {
 
     // Number of blocks to remove
     int blocksToRemove = instr.m_operandValue + 1;
@@ -332,7 +332,7 @@ constexpr STATUS HandleCallIndirect(State &state) {
 
   // pop table index first
   Data idxData = op_stk.Pop();
-  int32_t tableIdx = std::get<int32_t>(idxData.m_data);
+  int32_t tableIdx = idxData.get<int32_t>();
 
   // look up function in virtual table
   Function *f = state.m_virtualTable.m_data[tableIdx];
@@ -391,7 +391,7 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
   Memory &memory = state.m_memory;
   if (instr.m_mem == Member::_const) {
     Data data;
-    data.m_data = static_cast<T1>(instr.m_operandValue);
+    data.set(static_cast<T1>(instr.m_operandValue));
     op_stk.Push(data);
     state.m_instrPointer++;
     return STATUS::OK;
@@ -403,83 +403,83 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
     }
     T1 result;
     if (instr.m_mem == Member::_add) {
-      result = std::get<T1>(a.m_data) + std::get<T1>(b.m_data);
+      result = a.get<T1>() + b.get<T1>();
     } else if (instr.m_mem == Member::_sub) {
-      result = std::get<T1>(a.m_data) - std::get<T1>(b.m_data);
+      result = a.get<T1>() - b.get<T1>();
     } else if (instr.m_mem == Member::_mul) {
-      result = std::get<T1>(a.m_data) * std::get<T1>(b.m_data);
+      result = a.get<T1>() * b.get<T1>();
     } else if (instr.m_mem == Member::_le_s) {
-      result = std::get<T1>(a.m_data) <= std::get<T1>(b.m_data);
+      result = a.get<T1>() <= b.get<T1>();
     } else if (instr.m_mem == Member::_and) {
-      result = std::get<T1>(a.m_data) & std::get<T1>(b.m_data);
+      result = a.get<T1>() & b.get<T1>();
     } else if (instr.m_mem == Member::_eqz) {
-      result = (std::get<T1>(b.m_data) == 0) ? 1 : 0;
+      result = (b.get<T1>() == 0) ? 1 : 0;
     } else if (instr.m_mem == Member::_lt_s) {
-      result = std::get<T1>(a.m_data) < std::get<T1>(b.m_data);
+      result = a.get<T1>() < b.get<T1>();
     } else if (instr.m_mem == Member::_lt_u) {
       using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
-      result = static_cast<UT>(std::get<T1>(a.m_data)) <
-               static_cast<UT>(std::get<T1>(b.m_data));
+      result = static_cast<UT>(a.get<T1>()) <
+               static_cast<UT>(b.get<T1>());
     } else if (instr.m_mem == Member::_rem_s) {
-      if (std::get<T1>(b.m_data) == 0) {
+      if (b.get<T1>() == 0) {
         throw "rem_s: division by zero";
       }
-      result = std::get<T1>(a.m_data) % std::get<T1>(b.m_data);
+      result = a.get<T1>() % b.get<T1>();
     } else if (instr.m_mem == Member::_rem_u) {
       using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
-      UT ua = static_cast<UT>(std::get<T1>(a.m_data));
-      UT ub = static_cast<UT>(std::get<T1>(b.m_data));
+      UT ua = static_cast<UT>(a.get<T1>());
+      UT ub = static_cast<UT>(b.get<T1>());
       if (ub == 0) {
         throw "rem_u: division by zero";
       }
       result = static_cast<T1>(ua % ub);
     } else if (instr.m_mem == Member::_shl) {
-      result = std::get<T1>(a.m_data) << std::get<T1>(b.m_data);
+      result = a.get<T1>() << b.get<T1>();
     } else if (instr.m_mem == Member::_div_s) {
-      result = std::get<T1>(a.m_data) / std::get<T1>(b.m_data);
+      result = a.get<T1>() / b.get<T1>();
     } else if (instr.m_mem == Member::_div_u) {
       using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
-      result = static_cast<T1>(static_cast<UT>(std::get<T1>(a.m_data)) /
-                               static_cast<UT>(std::get<T1>(b.m_data)));
+      result = static_cast<T1>(static_cast<UT>(a.get<T1>()) /
+                               static_cast<UT>(b.get<T1>()));
     } else if (instr.m_mem == Member::_ne) {
-      result = std::get<T1>(a.m_data) != std::get<T1>(b.m_data);
+      result = a.get<T1>() != b.get<T1>();
     } else if (instr.m_mem == Member::_shr_s) {
-      result = std::get<T1>(a.m_data) >> std::get<T1>(b.m_data);
+      result = a.get<T1>() >> b.get<T1>();
     } else if (instr.m_mem == Member::_shr_u) {
       using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
-      result = static_cast<T1>(static_cast<UT>(std::get<T1>(a.m_data)) >>
-                               static_cast<UT>(std::get<T1>(b.m_data)));
+      result = static_cast<T1>(static_cast<UT>(a.get<T1>()) >>
+                               static_cast<UT>(b.get<T1>()));
     } else if (instr.m_mem == Member::_gt_s) {
-      result = std::get<T1>(a.m_data) > std::get<T1>(b.m_data);
+      result = a.get<T1>() > b.get<T1>();
     } else if (instr.m_mem == Member::_ge_s) {
-      result = std::get<T1>(a.m_data) >= std::get<T1>(b.m_data);
+      result = a.get<T1>() >= b.get<T1>();
     } else if (instr.m_mem == Member::_ge_u) {
       using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
-      result = static_cast<UT>(std::get<T1>(a.m_data)) >=
-               static_cast<UT>(std::get<T1>(b.m_data));
+      result = static_cast<UT>(a.get<T1>()) >=
+               static_cast<UT>(b.get<T1>());
     } else if (instr.m_mem == Member::_gt_u) {
       using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
-      result = static_cast<UT>(std::get<T1>(a.m_data)) >
-               static_cast<UT>(std::get<T1>(b.m_data));
+      result = static_cast<UT>(a.get<T1>()) >
+               static_cast<UT>(b.get<T1>());
     } else if (instr.m_mem == Member::_eq) {
-      result = std::get<T1>(a.m_data) == std::get<T1>(b.m_data);
+      result = a.get<T1>() == b.get<T1>();
     } else if (instr.m_mem == Member::_xor) {
-      result = std::get<T1>(a.m_data) ^ std::get<T1>(b.m_data);
+      result = a.get<T1>() ^ b.get<T1>();
     } else if (instr.m_mem == Member::_or) {
-      result = std::get<T1>(a.m_data) | std::get<T1>(b.m_data);
+      result = a.get<T1>() | b.get<T1>();
     } else if (instr.m_mem == Member::_trunc_f32_s) {
-      result = static_cast<T1>(std::get<float>(b.m_data));
+      result = static_cast<T1>(b.get<float>());
     } else if (instr.m_mem == Member::_trunc_f64_s) {
-      result = static_cast<T1>(std::get<double>(b.m_data));
+      result = static_cast<T1>(b.get<double>());
     } else if (instr.m_mem == Member::_extend_i32_s) {
-      result = static_cast<T1>(std::get<int32_t>(b.m_data));
+      result = static_cast<T1>(b.get<int32_t>());
     } else if (instr.m_mem == Member::_wrap_i64) {
-      result = static_cast<int32_t>(std::get<int64_t>(b.m_data));
+      result = static_cast<int32_t>(b.get<int64_t>());
     } else {
       throw "Unsupported Ixx operation";
     }
     Data data;
-    data.m_data = static_cast<T1>(result);
+    data.set(static_cast<T1>(result));
     op_stk.Push(data);
     state.m_instrPointer++;
     return STATUS::OK;
@@ -495,7 +495,7 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
     int32_t offset = instr.m_operandValue;
     if (instr.m_mem == Member::_load) {
       Data base = op_stk.Pop();
-      int32_t addr = std::get<int32_t>(base.m_data);
+      int32_t addr = base.get<int32_t>();
       // Address are always 32 bit
       if (addr < 0) {
         throw "Invalid base ptr in load";
@@ -512,11 +512,11 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
       }
 
       Data data;
-      data.m_data = static_cast<T1>(val);
+      data.set(static_cast<T1>(val));
       op_stk.Push(data);
     } else if (instr.m_mem == Member::_load8_u) {
       Data base = op_stk.Pop();
-      int32_t addr = std::get<int32_t>(base.m_data);
+      int32_t addr = base.get<int32_t>();
       if (addr < 0) {
         throw "Invalid base ptr in load8_u";
       }
@@ -528,11 +528,11 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
       }
       uint8_t val = memory.m_data[addr + offset];
       Data data;
-      data.m_data = static_cast<T1>(val);
+      data.set(static_cast<T1>(val));
       op_stk.Push(data);
     } else if (instr.m_mem == Member::_load8_s) {
       Data base = op_stk.Pop();
-      int32_t addr = std::get<int32_t>(base.m_data);
+      int32_t addr = base.get<int32_t>();
       if (addr < 0) {
         throw "Invalid base ptr in load8_s";
       }
@@ -545,11 +545,11 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
       }
       int8_t val = static_cast<int8_t>(memory.m_data[addr + offset]);
       Data data;
-      data.m_data = static_cast<T1>(val);
+      data.set(static_cast<T1>(val));
       op_stk.Push(data);
     } else if (instr.m_mem == Member::_load16_u) {
       Data base = op_stk.Pop();
-      int32_t addr = std::get<int32_t>(base.m_data);
+      int32_t addr = base.get<int32_t>();
       if (addr < 0) {
         throw "Invalid base ptr in load16_u";
       }
@@ -566,11 +566,11 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
                << (i * 8);
       }
       Data data;
-      data.m_data = static_cast<T1>(val);
+      data.set(static_cast<T1>(val));
       op_stk.Push(data);
     } else if (instr.m_mem == Member::_load16_s) {
       Data base = op_stk.Pop();
-      int32_t addr = std::get<int32_t>(base.m_data);
+      int32_t addr = base.get<int32_t>();
       if (addr < 0) {
         throw "Invalid base ptr in load16_s";
       }
@@ -587,14 +587,14 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
                << (i * 8);
       }
       Data data;
-      data.m_data = static_cast<T1>(val);
+      data.set(static_cast<T1>(val));
       op_stk.Push(data);
     } else if (instr.m_mem == Member::_store ||
                instr.m_mem == Member::_store8 ||
                instr.m_mem == Member::_store16) {
       Data val = op_stk.Pop();
       Data base = op_stk.Pop();
-      int32_t addr = std::get<int32_t>(base.m_data);
+      int32_t addr = base.get<int32_t>();
       if (addr < 0) {
         throw "Invalid base ptr in store/store8/store16";
       }
@@ -618,7 +618,7 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
 
       for (size_t i = 0; i < bytes; i++) {
         memory.m_data[addr + offset + i] =
-            static_cast<uint8_t>((std::get<T1>(val.m_data) >> (i * 8)) & 0xFF);
+            static_cast<uint8_t>((val.get<T1>() >> (i * 8)) & 0xFF);
       }
     }
     state.m_instrPointer++;
@@ -634,7 +634,7 @@ constexpr STATUS HandleF(State &state, const Instr &instr) {
   Memory &memory = state.m_memory;
   if (instr.m_mem == Member::_const) {
     Data data;
-    data.m_data = static_cast<T1>(instr.m_operandValueDecimal);
+    data.set(static_cast<T1>(instr.m_operandValueDecimal));
     op_stk.Push(data);
     state.m_instrPointer++;
     return STATUS::OK;
@@ -647,47 +647,47 @@ constexpr STATUS HandleF(State &state, const Instr &instr) {
     T1 result;
     bool isAssert = false;
     if (instr.m_mem == Member::_add) {
-      result = std::get<T1>(a.m_data) + std::get<T1>(b.m_data);
+      result = a.get<T1>() + b.get<T1>();
     } else if (instr.m_mem == Member::_sub) {
-      result = std::get<T1>(a.m_data) - std::get<T1>(b.m_data);
+      result = a.get<T1>() - b.get<T1>();
     } else if (instr.m_mem == Member::_mul) {
-      result = std::get<T1>(a.m_data) * std::get<T1>(b.m_data);
+      result = a.get<T1>() * b.get<T1>();
     } else if (instr.m_mem == Member::_div) {
-      result = std::get<T1>(a.m_data) / std::get<T1>(b.m_data);
+      result = a.get<T1>() / b.get<T1>();
     } else if (instr.m_mem == Member::_eqz) {
-      result = (std::get<T1>(b.m_data) == 0) ? 1 : 0;
+      result = (b.get<T1>() == 0) ? 1 : 0;
       isAssert = true;
     } else if (instr.m_mem == Member::_ne) {
-      result = std::get<T1>(a.m_data) != std::get<T1>(b.m_data);
+      result = a.get<T1>() != b.get<T1>();
       isAssert = true;
     } else if (instr.m_mem == Member::_eq) {
-      result = std::get<T1>(a.m_data) == std::get<T1>(b.m_data);
+      result = a.get<T1>() == b.get<T1>();
       isAssert = true;
     } else if (instr.m_mem == Member::_abs) {
-      result = std::get<T1>(b.m_data) >= 0 ? std::get<T1>(b.m_data)
-                                           : -std::get<T1>(b.m_data);
+      result = b.get<T1>() >= 0 ? b.get<T1>()
+                                           : -b.get<T1>();
     } else if (instr.m_mem == Member::_lt) {
-      result = std::get<T1>(a.m_data) < std::get<T1>(b.m_data);
+      result = a.get<T1>() < b.get<T1>();
       isAssert = true;
     } else if (instr.m_mem == Member::_ge) {
-      result = std::get<T1>(a.m_data) >= std::get<T1>(b.m_data);
+      result = a.get<T1>() >= b.get<T1>();
       isAssert = true;
     } else if (instr.m_mem == Member::_convert_i32_s) {
-      result = static_cast<T1>(std::get<int32_t>(b.m_data));
+      result = static_cast<T1>(b.get<int32_t>());
     } else if (instr.m_mem == Member::_convert_i64_s) {
-      result = static_cast<T1>(std::get<int64_t>(b.m_data));
+      result = static_cast<T1>(b.get<int64_t>());
     } else if (instr.m_mem == Member::_promote_f32) {
-      result = static_cast<T1>(std::get<float>(b.m_data));
+      result = static_cast<T1>(b.get<float>());
     } else if (instr.m_mem == Member::_demote_f64) {
-      result = static_cast<T1>(std::get<double>(b.m_data));
+      result = static_cast<T1>(b.get<double>());
     } else {
       throw "Unsupported F32 operation";
     }
     Data data;
     if (isAssert) {
-      data.m_data = static_cast<int32_t>(result);
+      data.set(static_cast<int32_t>(result));
     } else {
-      data.m_data = static_cast<T1>(result);
+      data.set(static_cast<T1>(result));
     }
     op_stk.Push(data);
     state.m_instrPointer++;
@@ -698,7 +698,7 @@ constexpr STATUS HandleF(State &state, const Instr &instr) {
     int32_t offset = instr.m_operandValue;
     if (instr.m_mem == Member::_load) {
       Data base = op_stk.Pop();
-      int32_t addr = std::get<int32_t>(base.m_data);
+      int32_t addr = base.get<int32_t>();
       // Address are always 32 bit
       if (addr < 0) {
         throw "Invalid base ptr in load F";
@@ -719,12 +719,12 @@ constexpr STATUS HandleF(State &state, const Instr &instr) {
       T1 val = std::bit_cast<T1>(raw); // constexpr safe
 
       Data data;
-      data.m_data = static_cast<T1>(val);
+      data.set(static_cast<T1>(val));
       op_stk.Push(data);
     } else if (instr.m_mem == Member::_store) {
       Data val = op_stk.Pop();
       Data base = op_stk.Pop();
-      int32_t addr = std::get<int32_t>(base.m_data);
+      int32_t addr = base.get<int32_t>();
       if (addr < 0) {
         throw "Invalid base ptr in store F";
       }
@@ -737,7 +737,7 @@ constexpr STATUS HandleF(State &state, const Instr &instr) {
       }
 
       using RawT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
-      T1 f = std::get<T1>(val.m_data);
+      T1 f = val.get<T1>();
       RawT raw = std::bit_cast<RawT>(f); // constexpr safe
 
       for (size_t i = 0; i < sizeof(T1); i++) {

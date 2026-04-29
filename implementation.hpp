@@ -4,7 +4,6 @@
 #include "types.hpp"
 #include <array>
 #include <string_view>
-#include <variant>
 
 constexpr bool isImplementationCall(std::string_view funcName) {
   return funcName == "$I_ReadScreen" || funcName == "$I_UpdateNoBlit" ||
@@ -27,57 +26,86 @@ constexpr bool isImplementationCall(std::string_view funcName) {
 }
 // -------- Graphics --------
 constexpr STATUS I_READSCREEN(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_ReadScreen";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_UPDATENOBLIT(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_UpdateNoBlit";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_SETPALETTE(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_SetPalette";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_FINISHUPDATE(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_FinishUpdate";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_INITGRAPHICS(State &state) {
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_STARTFRAME(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_StartFrame";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_STARTTIC(State &state) {
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_GETTIME(State &state) {
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  Stack &op_stk = state.m_opStack;
+  Data ret{};
+  ret.set(static_cast<int32_t>(state.m_ticks++));
+  op_stk.Push(ret);
+  state.m_instrPointer++;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_WAITVBL(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_WaitVBL";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_SYSFUNCERROR(State &state) {
+  if (state.m_ticks == 0) {
+    throw "System function error called";
+  }
   // optionally consume format args later
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_QUIT(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Quit called";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
@@ -98,10 +126,10 @@ constexpr int32_t alloc_zeroed(State &state, int32_t size) {
 constexpr STATUS I_ALLOCLOW(State &state) {
   // Just a zero memory allocator
   Stack &op_stk = state.m_opStack;
-  int32_t length = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t length = op_stk.Pop().get<int32_t>();
 
   Data ret{};
-  ret.m_data = alloc_zeroed(state, length);
+  ret.set(static_cast<int32_t>(alloc_zeroed(state, length)));
   op_stk.Push(ret);
   state.m_instrPointer++;
   return STATUS::OK;
@@ -115,7 +143,7 @@ constexpr STATUS I_ZONEBASE(State &state) {
   int32_t m_data = 6;
 
   // 1. Pop argument
-  int32_t address = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t address = op_stk.Pop().get<int32_t>();
 
   int32_t val = m_data * 1024 * 1024;
 
@@ -128,13 +156,16 @@ constexpr STATUS I_ZONEBASE(State &state) {
   }
 
   Data data{};
-  data.m_data = val;
+  data.set(val);
   op_stk.Push(data);
 
   return MALLOC(state);
 }
 
 constexpr STATUS I_NETCMD(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_NetCmd";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
@@ -177,18 +208,24 @@ constexpr STATUS I_INITNETWORK(State &state) {
 }
 
 constexpr STATUS I_BASETICCMD(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_BaseTiccmd";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_TACTILE(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_Tactile";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_SUBMITSOUND(State &state) {
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::ISBAD;
 }
 constexpr STATUS I_SETCHANNELS(State &state) {
   state.m_instrPointer++;
@@ -204,55 +241,88 @@ constexpr STATUS I_SETMUSICVOLUME(State &state) {
 }
 
 constexpr STATUS I_SOUNDISPLAYING(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_SoundIsPlaying";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_STOPSOUND(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_StopSound";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_REGISTERSONG(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_RegisterSong";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_PLAYSONG(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_PlaySong";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_GETSFXLUMPNUM(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_GetSfxLumpNum";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_STARTSOUND(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_StartSound";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_PAUSESONG(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_PauseSong";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 constexpr STATUS I_RESUMESONG(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_ResumeSong";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_UPDATESOUNDPARAMS(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_UpdateSoundParams";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_STOPSONG(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_StopSong";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }
 
 constexpr STATUS I_UNREGISTERSONG(State &state) {
+  if (state.m_ticks == 0) {
+    throw "Unimplemented I_UnRegisterSong";
+  }
   state.m_instrPointer++;
   return STATUS::SYSFUNCERROR;
 }

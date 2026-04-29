@@ -3,14 +3,41 @@
 #include "types.hpp"
 #include <array>
 #include <string_view>
-#include <variant>
+#include <bit>
 
 struct L1Cache {};
 struct L2Cache {};
 
+
 struct Data {
   std::string_view m_strId{};
-  std::variant<int32_t, uint32_t, int64_t, uint64_t, float, double> m_data{};
+  uint64_t m_data{};
+
+  template <typename T> constexpr T get() const {
+    if constexpr (std::is_same_v<T, int32_t>)
+      return static_cast<int32_t>(m_data);
+    else if constexpr (std::is_same_v<T, uint32_t>)
+      return static_cast<uint32_t>(m_data);
+    else if constexpr (std::is_same_v<T, int64_t>)
+      return static_cast<int64_t>(m_data);
+    else if constexpr (std::is_same_v<T, uint64_t>)
+      return m_data;
+    else if constexpr (std::is_same_v<T, float>)
+      return std::bit_cast<float>(static_cast<uint32_t>(m_data));
+    else if constexpr (std::is_same_v<T, double>)
+      return std::bit_cast<double>(m_data);
+    else
+      static_assert(sizeof(T) == 0, "Unsupported type in Data::get");
+  }
+
+  constexpr void set(int32_t v) {
+    m_data = static_cast<uint64_t>(static_cast<uint32_t>(v));
+  }
+  constexpr void set(uint32_t v) { m_data = static_cast<uint64_t>(v); }
+  constexpr void set(int64_t v) { m_data = static_cast<uint64_t>(v); }
+  constexpr void set(uint64_t v) { m_data = v; }
+  constexpr void set(float v) { m_data = std::bit_cast<uint32_t>(v); }
+  constexpr void set(double v) { m_data = std::bit_cast<uint64_t>(v); }
 };
 
 constexpr double ParseHexDecimal(std::string_view operand) {
@@ -524,6 +551,7 @@ struct State {
   FunctionTable m_functionTable{};
   VirtualTable m_virtualTable{};
   Function *m_activeFunction = nullptr;
+  uint64_t m_ticks = 0;
 };
 
 constexpr std::size_t getFunctionId(State &state, std::string_view str) {

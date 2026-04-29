@@ -71,7 +71,10 @@ constexpr STATUS loop(State &state) {
     // ERROR_FEOF, ERROR_FSCANF, ERROR_SSCANF,
     case OP::_call: {
       STATUS res = HandleCall(state, _op.m_operand);
-      if (res != STATUS::OK) {
+      if (res == STATUS::SYSFUNCERROR) {
+        throw "Implementation Handling Failed!";
+        return res;
+      } else if (res != STATUS::OK) {
         throw "CALL Call Handling Failed!";
         return res;
       }
@@ -226,7 +229,7 @@ inline constexpr auto ParseAndRun() {
   Data zdata{};
 
   // Parameters for added main
-  zdata.m_data.emplace<int32_t>(0);
+  zdata.set(int32_t{0});
   op_stk.Push(zdata);
   op_stk.Push(zdata);
 
@@ -248,7 +251,7 @@ inline constexpr auto ParseAndRun() {
 
   Data returnValue = state.m_opStack.Pop();
 
-  if (std::get<int32_t>(returnValue.m_data) != 0) {
+  if (returnValue.get<int32_t>() != 0) {
     throw "Invalid return value from main!";
   }
   return state.m_frameBuffer.m_data;
@@ -303,7 +306,7 @@ inline constexpr auto ParseAndRunNoCheck() {
   Data zdata{};
 
   // Parameters for added main
-  zdata.m_data.emplace<int32_t>(0);
+  zdata.set(int32_t{0});
   op_stk.Push(zdata);
   op_stk.Push(zdata);
 
@@ -325,7 +328,7 @@ inline constexpr auto ParseAndRunNoCheck() {
 
   Data returnValue = state.m_opStack.Pop();
 
-  if (std::get<int32_t>(returnValue.m_data) != 0) {
+  if (returnValue.get<int32_t>() != 0) {
     throw "Invalid return value from main!";
   }
   return state.m_frameBuffer.m_data;
@@ -343,7 +346,7 @@ inline constexpr auto RunNoCheck() {
   Data zdata{};
 
   // Parameters for added main
-  zdata.m_data.emplace<int32_t>(0);
+  zdata.set(int32_t{0});
   op_stk.Push(zdata);
   op_stk.Push(zdata);
 
@@ -369,7 +372,7 @@ inline constexpr auto RunNoCheck() {
 
   Data returnValue = state.m_opStack.Pop();
 
-  if (std::get<int32_t>(returnValue.m_data) != 0) {
+  if (returnValue.get<int32_t>() != 0) {
     throw "Invalid return value from main!";
   }
   return state.m_frameBuffer.m_data;

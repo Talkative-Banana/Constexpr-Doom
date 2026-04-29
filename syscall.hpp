@@ -3,7 +3,6 @@
 #include "types.hpp"
 #include <array>
 #include <string_view>
-#include <variant>
 
 // helper — constexpr itoa into memory, returns chars written
 constexpr int write_int(Memory &mem, int offset, int32_t val) {
@@ -137,7 +136,7 @@ constexpr STATUS STRLEN(State &state) {
   Stack &op_stk = state.m_opStack;
 
   // 1. Pop argument (pointer to key string)
-  int32_t key_ptr = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t key_ptr = op_stk.Pop().get<int32_t>();
 
   // 2. Read string from WASM memory
   int idx = 0;
@@ -146,7 +145,7 @@ constexpr STATUS STRLEN(State &state) {
   }
 
   Data ret{};
-  ret.m_data = idx;
+  ret.set(idx);
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -158,7 +157,7 @@ constexpr STATUS TOUPPER(State &state) {
   Stack &op_stk = state.m_opStack;
 
   // 1. Pop argument (pointer to key character)
-  int32_t val = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t val = op_stk.Pop().get<int32_t>();
 
   // 2. Read char from WASM memory and convert to uppercase
   int32_t res = 0;
@@ -171,7 +170,7 @@ constexpr STATUS TOUPPER(State &state) {
   }
 
   Data ret{};
-  ret.m_data = res;
+  ret.set(res);
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -188,9 +187,9 @@ constexpr STATUS SPRINTF(State &state) {
   bool has_varargs = (op_stk.m_vargCount == 3);
 
   int32_t varargs_ptr =
-      has_varargs ? std::get<int32_t>(op_stk.Pop().m_data) : -1;
-  int32_t fmt_ptr = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t buf_ptr = std::get<int32_t>(op_stk.Pop().m_data);
+      has_varargs ? op_stk.Pop().get<int32_t>() : -1;
+  int32_t fmt_ptr = op_stk.Pop().get<int32_t>();
+  int32_t buf_ptr = op_stk.Pop().get<int32_t>();
 
   if (fmt_ptr < 0 || fmt_ptr >= MEMORYSIZE)
     throw "Invalid memory pointer for format string";
@@ -322,7 +321,7 @@ constexpr STATUS SPRINTF(State &state) {
   memory.m_data[buf_ptr + out_pos] = '\0';
 
   Data ret{};
-  ret.m_data = static_cast<int32_t>(out_pos);
+  ret.set(static_cast<int32_t>(out_pos));
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -336,9 +335,9 @@ constexpr STATUS MEMCPY(State &state) {
   Stack &op_stk = state.m_opStack;
 
   // 1. Pop arguments (dest, src, n)
-  int32_t n = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t src = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t dest = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t n = op_stk.Pop().get<int32_t>();
+  int32_t src = op_stk.Pop().get<int32_t>();
+  int32_t dest = op_stk.Pop().get<int32_t>();
 
   // 2. Copy bytes in memory
   if (src >= 0 && src + n <= MEMORYSIZE && dest >= 0 &&
@@ -349,7 +348,7 @@ constexpr STATUS MEMCPY(State &state) {
   }
 
   Data ret{};
-  ret.m_data = dest;
+  ret.set(dest);
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -368,8 +367,8 @@ constexpr STATUS PRINTF(State &state) {
   bool has_varargs = (op_stk.m_vargCount >= 2);
 
   int32_t varargs_ptr =
-      has_varargs ? std::get<int32_t>(op_stk.Pop().m_data) : -1;
-  int32_t fmt_ptr = std::get<int32_t>(op_stk.Pop().m_data);
+      has_varargs ? op_stk.Pop().get<int32_t>() : -1;
+  int32_t fmt_ptr = op_stk.Pop().get<int32_t>();
 
   if (fmt_ptr < 0 || fmt_ptr >= MEMORYSIZE)
     throw "Invalid memory pointer for format string";
@@ -450,7 +449,7 @@ constexpr STATUS PRINTF(State &state) {
   }
 
   Data ret{};
-  ret.m_data = static_cast<int32_t>(frameBuffer.m_framePtr - out_pos);
+  ret.set(static_cast<int32_t>(frameBuffer.m_framePtr - out_pos));
   op_stk.Push(ret);
   state.m_instrPointer++;
   return STATUS::OK;
@@ -463,8 +462,8 @@ constexpr STATUS FOPEN(State &state) {
   Stack &op_stk = state.m_opStack;
 
   // 1. Pop argument (pointer to key string)
-  std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t address = std::get<int32_t>(op_stk.Pop().m_data);
+  op_stk.Pop().get<int32_t>();
+  int32_t address = op_stk.Pop().get<int32_t>();
 
   int idx = 0;
   while (idx + address < MEMORYSIZE && memory.m_data[address + idx] != '\0') {
@@ -490,7 +489,7 @@ constexpr STATUS FOPEN(State &state) {
   }
 
   Data ret{};
-  ret.m_data = filePtr;
+  ret.set(filePtr);
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -505,7 +504,7 @@ constexpr STATUS MALLOC(State &state) {
   Stack &op_stk = state.m_opStack;
 
   // 1. Pop argument (size of memory to alloc)
-  int32_t size = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t size = op_stk.Pop().get<int32_t>();
 
   // TODO: Fix this to get ptr dynamically [bump alloc for now]
   // 2. get a place to save result to
@@ -517,9 +516,9 @@ constexpr STATUS MALLOC(State &state) {
   // 4. Push return value (pointer)
   Data ret{};
   if (size == 0) {
-    ret.m_data = int32_t{0};
+    ret.set(int32_t{0});
   } else {
-    ret.m_data = ptr;
+    ret.set(ptr);
   }
   op_stk.Push(ret);
 
@@ -541,8 +540,8 @@ constexpr STATUS STRCPY(State &state) {
   }
 
   // 1. Pop argument (pointer to key string)
-  int32_t src_ptr = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t dest_ptr = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t src_ptr = op_stk.Pop().get<int32_t>();
+  int32_t dest_ptr = op_stk.Pop().get<int32_t>();
 
   int idx = 0;
   while (idx + src_ptr < MEMORYSIZE && memory.m_data[src_ptr + idx] != '\0') {
@@ -552,7 +551,7 @@ constexpr STATUS STRCPY(State &state) {
   memory.m_data[dest_ptr + idx] = '\0';
 
   Data ret{};
-  ret.m_data = dest_ptr;
+  ret.set(dest_ptr);
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -566,7 +565,7 @@ constexpr STATUS GETENV(State &state) {
   Stack &op_stk = state.m_opStack;
 
   // 1. Pop argument (pointer to key string)
-  int32_t key_ptr = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t key_ptr = op_stk.Pop().get<int32_t>();
 
   // 2. Read string from WASM memory
   int idx = 0;
@@ -603,7 +602,7 @@ constexpr STATUS GETENV(State &state) {
 
   // 6. Push return value (pointer)
   Data ret{};
-  ret.m_data = ptr;
+  ret.set(ptr);
   op_stk.Push(ret);
 
   // advance instruction
@@ -618,8 +617,8 @@ constexpr STATUS ACCESS(State &state) {
   Stack &op_stk = state.m_opStack;
 
   // 1. Pop argument (pointer to key string)
-  std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t pathptr = std::get<int32_t>(op_stk.Pop().m_data);
+  op_stk.Pop().get<int32_t>();
+  int32_t pathptr = op_stk.Pop().get<int32_t>();
 
   if (pathptr < 0 || pathptr >= MEMORYSIZE)
     throw "Invalid memory pointer";
@@ -650,7 +649,7 @@ constexpr STATUS ACCESS(State &state) {
 
   Data ret{};
   // Grant Permission => 0
-  ret.m_data = permission;
+  ret.set(permission);
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -664,7 +663,7 @@ constexpr STATUS PUTS(State &state) {
   FrameBuffer &frameBuffer = state.m_frameBuffer;
 
   // 1. Pop argument (pointer to key string)
-  int32_t key_ptr = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t key_ptr = op_stk.Pop().get<int32_t>();
 
   // 2. Read string from WASM memory
   int idx = 0;
@@ -683,7 +682,7 @@ constexpr STATUS PUTS(State &state) {
   std::string_view key(buff.data(), idx);
 
   Data ret{};
-  ret.m_data = idx;
+  ret.set(idx);
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -727,8 +726,8 @@ constexpr STATUS CALLOC(State &state) {
   Stack &op_stk = state.m_opStack;
 
   // 1. Pop argument (size of memory to alloc)
-  int32_t size = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t nmemb = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t size = op_stk.Pop().get<int32_t>();
+  int32_t nmemb = op_stk.Pop().get<int32_t>();
 
   // TODO: Fix this to get ptr dynamically
   // 2. get a place to save result to
@@ -745,9 +744,9 @@ constexpr STATUS CALLOC(State &state) {
   // 4. Push return value (pointer)
   Data ret{};
   if (size * nmemb == 0) {
-    ret.m_data = int32_t{0};
+    ret.set(int32_t{0});
   } else {
-    ret.m_data = ptr;
+    ret.set(ptr);
   }
   op_stk.Push(ret);
 
@@ -798,12 +797,12 @@ constexpr STATUS PUTCHAR(State &state) {
   Stack &op_stk = state.m_opStack;
   FrameBuffer &frameBuffer = state.m_frameBuffer;
 
-  int32_t chr = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t chr = op_stk.Pop().get<int32_t>();
 
   frameBuffer.m_data[frameBuffer.m_framePtr++] = chr;
   
   Data ret{};
-  ret.m_data = chr;
+  ret.set(chr);
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -830,7 +829,7 @@ constexpr STATUS FPRINTF(State &state) {
   op_stk.Pop(); // FILE*
 
   Data ret{};
-  ret.m_data = int32_t{0};
+  ret.set(int32_t{0});
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -856,16 +855,16 @@ constexpr STATUS MEMSET(State &state) {
   Memory &memory = state.m_memory;
   Stack &op_stk = state.m_opStack;
 
-  int32_t size = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t value = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t ptr = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t size = op_stk.Pop().get<int32_t>();
+  int32_t value = op_stk.Pop().get<int32_t>();
+  int32_t ptr = op_stk.Pop().get<int32_t>();
 
   for (int i = 0; i < size; i++) {
     memory.m_data[ptr + i] = static_cast<uint8_t>(value);
   }
 
   Data ret{};
-  ret.m_data = ptr;
+  ret.set(ptr);
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -884,9 +883,9 @@ constexpr STATUS OPEN(State &state) {
   Stack &op_stk = state.m_opStack;
   Descriptor &desc = state.m_descriptor;
 
-  std::get<int32_t>(op_stk.Pop().m_data); // mode
-  std::get<int32_t>(op_stk.Pop().m_data); // flags
-  int32_t filePtr = std::get<int32_t>(op_stk.Pop().m_data);
+  op_stk.Pop().get<int32_t>(); // mode
+  op_stk.Pop().get<int32_t>(); // flags
+  int32_t filePtr = op_stk.Pop().get<int32_t>();
 
   // Make all required files available at fixed addresses in memory, and return
   // pointers to them from fopen.
@@ -918,7 +917,7 @@ constexpr STATUS OPEN(State &state) {
   }
 
   Data ret{};
-  ret.m_data = int32_t{fileDescriptor};
+  ret.set(int32_t{fileDescriptor});
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -945,13 +944,13 @@ constexpr STATUS READ(State &state) {
   FileSystem &fs = state.m_fileSystem;
   Descriptor &desc = state.m_descriptor;
 
-  int32_t count = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t bufPtr = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t handle = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t count = op_stk.Pop().get<int32_t>();
+  int32_t bufPtr = op_stk.Pop().get<int32_t>();
+  int32_t handle = op_stk.Pop().get<int32_t>();
 
   if (handle < 0 || handle >= FDTABLE || !desc.m_fdTable[handle].m_open) {
     Data ret{};
-    ret.m_data = int32_t{-1}; // error
+    ret.set(int32_t{-1}); // error
     op_stk.Push(ret);
     state.m_instrPointer++;
     return STATUS::OK;
@@ -969,7 +968,7 @@ constexpr STATUS READ(State &state) {
 
   desc.m_fdTable[handle].m_offset += idx;
   Data ret{};
-  ret.m_data = idx; // number of bytes read
+  ret.set(idx); // number of bytes read
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -990,7 +989,7 @@ constexpr STATUS CLOSE(State &state) {
 
   Stack &op_stk = state.m_opStack;
   Descriptor &desc = state.m_descriptor;
-  int32_t handle = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t handle = op_stk.Pop().get<int32_t>();
 
   bool success = false;
   if (handle >= 0 && handle < FDTABLE && desc.m_fdTable[handle].m_open) {
@@ -999,7 +998,7 @@ constexpr STATUS CLOSE(State &state) {
   }
 
   Data ret{};
-  ret.m_data = int32_t{success}; // success
+  ret.set(int32_t{success}); // success
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -1015,9 +1014,9 @@ constexpr STATUS STRNCPY(State &state) {
   Memory &memory = state.m_memory;
   Stack &op_stk = state.m_opStack;
 
-  int32_t n = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t src = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t dst = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t n = op_stk.Pop().get<int32_t>();
+  int32_t src = op_stk.Pop().get<int32_t>();
+  int32_t dst = op_stk.Pop().get<int32_t>();
 
   int i = 0;
   for (; i < n && memory.m_data[src + i] != '\0'; i++)
@@ -1026,7 +1025,7 @@ constexpr STATUS STRNCPY(State &state) {
     memory.m_data[dst + i] = '\0';
 
   Data ret{};
-  ret.m_data = dst;
+  ret.set(dst);
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -1060,8 +1059,8 @@ constexpr STATUS FSTAT(State &state) {
   Stack &op_stk = state.m_opStack;
 
   // Pop in reverse order
-  int32_t statPtr = std::get<int32_t>(op_stk.Pop().m_data); // statPtr
-  std::get<int32_t>(op_stk.Pop().m_data); // handle
+  int32_t statPtr = op_stk.Pop().get<int32_t>(); // statPtr
+  op_stk.Pop().get<int32_t>(); // handle
 
   // Write st_size at offset 44 (32-bit Linux stat)
   int32_t size = 524779;
@@ -1072,7 +1071,7 @@ constexpr STATUS FSTAT(State &state) {
 
   Data ret{};
   // success by default, can set to error code if needed
-  ret.m_data = int32_t{0};
+  ret.set(int32_t{0});
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -1113,8 +1112,8 @@ constexpr STATUS STRCASECMP(State &state) {
   Stack &op_stk = state.m_opStack;
 
   // Pop in reverse order
-  int32_t s2_ptr = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t s1_ptr = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t s2_ptr = op_stk.Pop().get<int32_t>();
+  int32_t s1_ptr = op_stk.Pop().get<int32_t>();
 
   int i = 0;
 
@@ -1127,7 +1126,7 @@ constexpr STATUS STRCASECMP(State &state) {
 
     if (l1 != l2) {
       Data ret{};
-      ret.m_data = static_cast<int32_t>(l1 - l2);
+      ret.set(static_cast<int32_t>(l1 - l2));
       op_stk.Push(ret);
 
       state.m_instrPointer++;
@@ -1137,7 +1136,7 @@ constexpr STATUS STRCASECMP(State &state) {
     // If both hit null → equal
     if (c1 == '\0') {
       Data ret{};
-      ret.m_data = int32_t{0};
+      ret.set(int32_t{0});
       op_stk.Push(ret);
       state.m_instrPointer++;
       return STATUS::OK;
@@ -1153,9 +1152,9 @@ constexpr STATUS STRNCASECMP(State &state) {
   Stack &op_stk = state.m_opStack;
 
   // Pop in reverse order
-  int32_t n = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t s2_ptr = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t s1_ptr = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t n = op_stk.Pop().get<int32_t>();
+  int32_t s2_ptr = op_stk.Pop().get<int32_t>();
+  int32_t s1_ptr = op_stk.Pop().get<int32_t>();
 
   int i = 0;
 
@@ -1168,7 +1167,7 @@ constexpr STATUS STRNCASECMP(State &state) {
 
     if (l1 != l2) {
       Data ret{};
-      ret.m_data = static_cast<int32_t>(l1 - l2);
+      ret.set(static_cast<int32_t>(l1 - l2));
       op_stk.Push(ret);
 
       state.m_instrPointer++;
@@ -1178,7 +1177,7 @@ constexpr STATUS STRNCASECMP(State &state) {
     // If both hit null → equal
     if (c1 == '\0') {
       Data ret{};
-      ret.m_data = int32_t{0};
+      ret.set(int32_t{0});
       op_stk.Push(ret);
       state.m_instrPointer++;
       return STATUS::OK;
@@ -1187,7 +1186,7 @@ constexpr STATUS STRNCASECMP(State &state) {
   }
 
   Data ret{};
-  ret.m_data = int32_t{0};
+  ret.set(int32_t{0});
   op_stk.Push(ret);
   state.m_instrPointer++;
   return STATUS::OK;
@@ -1210,13 +1209,13 @@ constexpr STATUS LSEEK(State &state) {
   Descriptor &desc = state.m_descriptor;
 
   // Pop in reverse order
-  int32_t whence = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t offset = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t handle = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t whence = op_stk.Pop().get<int32_t>();
+  int32_t offset = op_stk.Pop().get<int32_t>();
+  int32_t handle = op_stk.Pop().get<int32_t>();
 
   if (handle < 0 || handle >= FDTABLE || !desc.m_fdTable[handle].m_open) {
     Data ret{};
-    ret.m_data = int32_t{-1}; // error
+    ret.set(int32_t{-1}); // error
     op_stk.Push(ret);
     state.m_instrPointer++;
     return STATUS::OK;
@@ -1235,7 +1234,7 @@ constexpr STATUS LSEEK(State &state) {
   }
 
   Data ret{};
-  ret.m_data = fd.m_offset;
+  ret.set(fd.m_offset);
   op_stk.Push(ret);
 
   state.m_instrPointer++;
@@ -1256,8 +1255,8 @@ constexpr STATUS REALLOC(State &state) {
   Memory &mem = state.m_memory;
   Stack &op_stk = state.m_opStack;
 
-  int32_t size = std::get<int32_t>(op_stk.Pop().m_data);
-  int32_t rPtr = std::get<int32_t>(op_stk.Pop().m_data);
+  int32_t size = op_stk.Pop().get<int32_t>();
+  int32_t rPtr = op_stk.Pop().get<int32_t>();
 
   int32_t newPtr = 0;
 
@@ -1265,7 +1264,7 @@ constexpr STATUS REALLOC(State &state) {
     // NULL ptr — equivalent to malloc(size)
     if (size == 0) {
       Data ret{};
-      ret.m_data = int32_t(0);
+      ret.set(int32_t(0));
       op_stk.Push(ret);
       state.m_instrPointer++;
       return STATUS::OK;
@@ -1274,13 +1273,13 @@ constexpr STATUS REALLOC(State &state) {
     state.m_heap.m_heapPtr += size;
 
     Data ret{};
-    ret.m_data = int32_t(newPtr);
+    ret.set(int32_t(newPtr));
     op_stk.Push(ret);
 
   } else if (size == 0) {
     // free(ptr) — bump allocator just ignores frees
     Data ret{};
-    ret.m_data = int32_t(0);
+    ret.set(int32_t(0));
     op_stk.Push(ret);
   } else {
     // Allocate new block and copy old contents
@@ -1294,7 +1293,7 @@ constexpr STATUS REALLOC(State &state) {
     }
     // Old block is "freed" — bump allocator ignores it
     Data ret{};
-    ret.m_data = int32_t(newPtr);
+    ret.set(int32_t(newPtr));
     op_stk.Push(ret);
   }
 
