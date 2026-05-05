@@ -4,3 +4,20 @@
 ctwr
 doom1.wad
 parsedState.hpp
+
+# Build artifacts
+*.o
+*.out
+*.exe
+
+# Binaries
+ctwr
+
+# Large assets
+*.wad
+
+# IDE
+.vscode/
+
+# Generated files
+parsedState.hpp
