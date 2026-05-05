@@ -4138,7 +4138,6 @@
       i32.mul
       i32.add
       i32.load
-      halt
       call $S_UpdateSounds
       call $D_Display
       call $I_SubmitSound

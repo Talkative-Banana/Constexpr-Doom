@@ -26,7 +26,7 @@ constexpr bool isImplementationCall(std::string_view funcName) {
 }
 // -------- Graphics --------
 constexpr STATUS I_READSCREEN(State &state) {
-  if (state.m_ticks == 0) {
+  if (state.m_ticks != 1e9) {
     throw "Unimplemented I_ReadScreen";
   }
   state.m_instrPointer++;
@@ -34,7 +34,7 @@ constexpr STATUS I_READSCREEN(State &state) {
 }
 
 constexpr STATUS I_UPDATENOBLIT(State &state) {
-  if (state.m_ticks == 0) {
+  if (state.m_ticks != 1e9) {
     throw "Unimplemented I_UpdateNoBlit";
   }
   state.m_instrPointer++;
@@ -42,7 +42,7 @@ constexpr STATUS I_UPDATENOBLIT(State &state) {
 }
 
 constexpr STATUS I_SETPALETTE(State &state) {
-  if (state.m_ticks == 0) {
+  if (state.m_ticks != 1e9) {
     throw "Unimplemented I_SetPalette";
   }
   state.m_instrPointer++;
@@ -50,7 +50,7 @@ constexpr STATUS I_SETPALETTE(State &state) {
 }
 
 constexpr STATUS I_FINISHUPDATE(State &state) {
-  if (state.m_ticks == 0) {
+  if (state.m_ticks != 1e9) {
     throw "Unimplemented I_FinishUpdate";
   }
   state.m_instrPointer++;
@@ -63,11 +63,8 @@ constexpr STATUS I_INITGRAPHICS(State &state) {
 }
 
 constexpr STATUS I_STARTFRAME(State &state) {
-  if (state.m_ticks == 0) {
-    throw "Unimplemented I_StartFrame";
-  }
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_STARTTIC(State &state) {
@@ -76,7 +73,6 @@ constexpr STATUS I_STARTTIC(State &state) {
 }
 
 constexpr STATUS I_GETTIME(State &state) {
-  state.m_instrPointer++;
   Stack &op_stk = state.m_opStack;
   Data ret{};
   ret.set(static_cast<int32_t>(state.m_ticks++));
@@ -86,7 +82,7 @@ constexpr STATUS I_GETTIME(State &state) {
 }
 
 constexpr STATUS I_WAITVBL(State &state) {
-  if (state.m_ticks == 0) {
+  if (state.m_ticks != 1e9) {
     throw "Unimplemented I_WaitVBL";
   }
   state.m_instrPointer++;
@@ -94,7 +90,7 @@ constexpr STATUS I_WAITVBL(State &state) {
 }
 
 constexpr STATUS I_SYSFUNCERROR(State &state) {
-  if (state.m_ticks == 0) {
+  if (state.m_ticks != 1e9) {
     throw "System function error called";
   }
   // optionally consume format args later
@@ -103,7 +99,7 @@ constexpr STATUS I_SYSFUNCERROR(State &state) {
 }
 
 constexpr STATUS I_QUIT(State &state) {
-  if (state.m_ticks == 0) {
+  if (state.m_ticks != 1e9) {
     throw "Quit called";
   }
   state.m_instrPointer++;
@@ -163,7 +159,7 @@ constexpr STATUS I_ZONEBASE(State &state) {
 }
 
 constexpr STATUS I_NETCMD(State &state) {
-  if (state.m_ticks == 0) {
+  if (state.m_ticks != 1e9) {
     throw "Unimplemented I_NetCmd";
   }
   state.m_instrPointer++;
@@ -208,15 +204,19 @@ constexpr STATUS I_INITNETWORK(State &state) {
 }
 
 constexpr STATUS I_BASETICCMD(State &state) {
-  if (state.m_ticks == 0) {
-    throw "Unimplemented I_BaseTiccmd";
-  }
+  // Return pointer to a zeroed ticcmd_t (8 bytes)
+  // Just return heap pointer to zeroed memory
+  Stack &op_stk = state.m_opStack;
+  int32_t ptr = alloc_zeroed(state, 8);
+  Data ret{};
+  ret.set(ptr);
+  op_stk.Push(ret);
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_TACTILE(State &state) {
-  if (state.m_ticks == 0) {
+  if (state.m_ticks != 1e9) {
     throw "Unimplemented I_Tactile";
   }
   state.m_instrPointer++;
@@ -241,70 +241,71 @@ constexpr STATUS I_SETMUSICVOLUME(State &state) {
 }
 
 constexpr STATUS I_SOUNDISPLAYING(State &state) {
-  if (state.m_ticks == 0) {
-    throw "Unimplemented I_SoundIsPlaying";
-  }
+  state.m_opStack.Pop(); // handle
+  Data ret{};
+  ret.set(int32_t{0}); // not playing
+  state.m_opStack.Push(ret);
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_STOPSOUND(State &state) {
-  if (state.m_ticks == 0) {
-    throw "Unimplemented I_StopSound";
-  }
+  state.m_opStack.Pop(); // handle
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_REGISTERSONG(State &state) {
-  if (state.m_ticks == 0) {
-    throw "Unimplemented I_RegisterSong";
-  }
+  Stack &op_stk = state.m_opStack;
+  op_stk.Pop(); // pop data pointer - ignore it
+  Data ret{};
+  ret.set(int32_t{1}); // return dummy handle
+  op_stk.Push(ret);
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_PLAYSONG(State &state) {
-  if (state.m_ticks == 0) {
-    throw "Unimplemented I_PlaySong";
-  }
+  state.m_opStack.Pop(); // looping
+  state.m_opStack.Pop(); // handle
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_GETSFXLUMPNUM(State &state) {
-  if (state.m_ticks == 0) {
-    throw "Unimplemented I_GetSfxLumpNum";
-  }
+  state.m_opStack.Pop(); // sfxinfo ptr
+  Data ret{};
+  ret.set(int32_t{0});
+  state.m_opStack.Push(ret);
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_STARTSOUND(State &state) {
-  if (state.m_ticks == 0) {
-    throw "Unimplemented I_StartSound";
-  }
+  // (origin_x, origin_y, sfxid, vol, sep, pitch, priority) or similar
+  // pop all args, return dummy channel handle
+  for (int i = 0; i < 5; i++)
+    state.m_opStack.Pop();
+  Data ret{};
+  ret.set(int32_t{1});
+  state.m_opStack.Push(ret);
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_PAUSESONG(State &state) {
-  if (state.m_ticks == 0) {
-    throw "Unimplemented I_PauseSong";
-  }
+  state.m_opStack.Pop(); // handle
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 constexpr STATUS I_RESUMESONG(State &state) {
-  if (state.m_ticks == 0) {
-    throw "Unimplemented I_ResumeSong";
-  }
+  state.m_opStack.Pop(); // handle
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_UPDATESOUNDPARAMS(State &state) {
-  if (state.m_ticks == 0) {
+  if (state.m_ticks != 1e9) {
     throw "Unimplemented I_UpdateSoundParams";
   }
   state.m_instrPointer++;
@@ -312,19 +313,15 @@ constexpr STATUS I_UPDATESOUNDPARAMS(State &state) {
 }
 
 constexpr STATUS I_STOPSONG(State &state) {
-  if (state.m_ticks == 0) {
-    throw "Unimplemented I_StopSong";
-  }
+  state.m_opStack.Pop(); // handle
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_UNREGISTERSONG(State &state) {
-  if (state.m_ticks == 0) {
-    throw "Unimplemented I_UnRegisterSong";
-  }
+  state.m_opStack.Pop(); // handle
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_ERROR(State &state) {
