@@ -74,8 +74,7 @@ constexpr STATUS loop(State &state) {
       if (res == STATUS::SYSFUNCERROR) {
         throw "Implementation Handling Failed!";
         return res;
-      } else if (res != STATUS::OK) {
-        throw "CALL Call Handling Failed!";
+      } else if (res == STATUS::ISBAD) {
         return res;
       }
       break;

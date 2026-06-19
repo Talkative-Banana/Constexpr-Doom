@@ -77,7 +77,7 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   uint32_t localCount = f.m_localCount;
   // Push local variables
   for (uint32_t i = 0; i < localCount; i++) {
-    ParamType pt = f.m_params[i];
+    ParamType pt = f.m_locals[i];
     Data data{};
     if (pt == ParamType::_i32) {
       data.set(int32_t{});
@@ -106,12 +106,11 @@ constexpr STATUS HandleLocal(State &state, const Instr &instr) {
   Stack &stk = state.m_stack;
   Stack &op_stk = state.m_opStack;
 
-  // Get and Set local variables using the operand as the offset from the base
-  if (static_cast<int64_t>(stk.m_basePointer) + instr.m_operandValue + 1 >=
-      STACKSIZE) {
+  int64_t address = static_cast<int64_t>(stk.m_basePointer) + static_cast<int64_t>(instr.m_operandValue) + 1;
+
+  if (address < 0 || address >= static_cast<int64_t>(STACKSIZE)){
     throw "Invalid Address used in local.get";
   }
-  uint64_t address = stk.m_basePointer + instr.m_operandValue + 1;
   if (instr.m_mem == Member::_get) {
     Data data = stk.m_data[address];
     op_stk.Push(data);

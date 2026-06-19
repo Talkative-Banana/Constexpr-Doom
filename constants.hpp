@@ -24,7 +24,7 @@ static constexpr int GLOBALSIZE = 650;
 // 9 WASM pages = 576KB, small headroom
 static constexpr int MEMORYSIZE = 1024 * 1204 * 8;
 static constexpr int SCREENWIDTH = 320;
-static constexpr int SCREENHEIGHT = 20;
+static constexpr int SCREENHEIGHT = 200;
 
 static constexpr std::string_view CALL = "call";
 static constexpr std::string_view MAIN = "$main";

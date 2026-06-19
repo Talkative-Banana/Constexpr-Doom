@@ -34,27 +34,52 @@ constexpr STATUS I_READSCREEN(State &state) {
 }
 
 constexpr STATUS I_UPDATENOBLIT(State &state) {
-  if (state.m_ticks != 1e9) {
-    throw "Unimplemented I_UpdateNoBlit";
-  }
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_SETPALETTE(State &state) {
-  if (state.m_ticks != 1e9) {
-    throw "Unimplemented I_SetPalette";
+  Stack &op_stk = state.m_opStack;
+  int32_t palettePtr = op_stk.Pop().get<int32_t>();
+
+  for (int i = 0; i < 256; i++) {
+    state.m_palette.m_data[i].r = state.m_memory.m_data[palettePtr + i*3 + 0];
+    state.m_palette.m_data[i].g = state.m_memory.m_data[palettePtr + i*3 + 1];
+    state.m_palette.m_data[i].b = state.m_memory.m_data[palettePtr + i*3 + 2];
   }
+
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
+constexpr int32_t SCREENS_GLOBAL_ADDR = 459392;
 
 constexpr STATUS I_FINISHUPDATE(State &state) {
-  if (state.m_ticks != 1e9) {
-    throw "Unimplemented I_FinishUpdate";
+  auto &mem = state.m_memory.m_data;
+  int32_t screenBuf = static_cast<int32_t>(mem[SCREENS_GLOBAL_ADDR + 0])
+               | (static_cast<int32_t>(mem[SCREENS_GLOBAL_ADDR + 1]) << 8)
+               | (static_cast<int32_t>(mem[SCREENS_GLOBAL_ADDR + 2]) << 16)
+               | (static_cast<int32_t>(mem[SCREENS_GLOBAL_ADDR + 3]) << 24);
+
+  if (screenBuf == 0) {
+    state.m_instrPointer++;
+    return STATUS::OK;
   }
+
+  uint32_t out = 0;
+  for (int y = 0; y < SCREENHEIGHT; y++) {
+    for (int x = 0; x < SCREENWIDTH; x++) {
+      int srcX = x * 320 / SCREENWIDTH;
+      int srcY = y * 200 / SCREENHEIGHT;
+      uint8_t idx = state.m_memory.m_data[screenBuf + srcY * 320 + srcX];
+      auto &c = state.m_palette.m_data[idx];
+      int brightness = (c.r + c.g + c.b) / 3;
+      state.m_frameBuffer.m_data[out++] = " .:-=+*#%@"[brightness * 10 / 256];
+    }
+  }
+  state.m_frameBuffer.m_framePtr = out;
+
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_INITGRAPHICS(State &state) {

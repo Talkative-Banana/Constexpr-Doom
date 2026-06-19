@@ -203,6 +203,23 @@ def strip_comments(src: str) -> str:
         out.append(line[:idx] if idx != -1 else line)
     return "\n".join(out)
 
+def inject_tantoangle(memory: Memory, base_addr: int = 185344):
+
+    def write_u32(addr, val):
+        val &= 0xFFFFFFFF
+        memory.data[addr + 0] = val & 0xFF
+        memory.data[addr + 1] = (val >> 8) & 0xFF
+        memory.data[addr + 2] = (val >> 16) & 0xFF
+        memory.data[addr + 3] = (val >> 24) & 0xFF
+
+    SLOPERANGE = 2048
+    ANG90 = 0x40000000
+
+    for i in range(SLOPERANGE + 1):
+        angle = math.atan(i / SLOPERANGE)
+        val = int(angle * ANG90 / (math.pi / 2.0))
+        write_u32(base_addr + i * 4, val)
+
 def split_module_items(src: str):
     items = []
     depth = 0
@@ -523,6 +540,25 @@ def build_state(src: str) -> ParsedState:
             parse_data(child, state.memory)
         elif wtype == WASMOP._elem:
             state.vtable_entries += parse_elem(child)
+    
+    # ── Reconstruct dead-stripped tantoangle table ──────────────
+    inject_tantoangle(state.memory, base_addr=185344)
+    
+    last = 0
+    for i in range(2049):
+        addr = 185344 + i * 4
+
+        v = (
+            state.memory.data[addr]
+            | (state.memory.data[addr+1] << 8)
+            | (state.memory.data[addr+2] << 16)
+            | (state.memory.data[addr+3] << 24)
+        )
+
+        assert v >= last
+        last = v
+
+    print(hex(last))
 
     return state
 

@@ -914,6 +914,8 @@ constexpr STATUS OPEN(State &state) {
     // TODO: update size based on actual file size
     desc.m_fdTable[fileDescriptor].m_size = 524779; // size of doom1.wad
     desc.m_fdTable[fileDescriptor].m_dataPtr = 0;
+  } else {
+    throw "File not found";
   }
 
   Data ret{};
@@ -950,6 +952,7 @@ constexpr STATUS READ(State &state) {
 
   if (handle < 0 || handle >= FDTABLE || !desc.m_fdTable[handle].m_open) {
     Data ret{};
+    throw "Read Error";
     ret.set(int32_t{-1}); // error
     op_stk.Push(ret);
     state.m_instrPointer++;
@@ -1215,6 +1218,7 @@ constexpr STATUS LSEEK(State &state) {
 
   if (handle < 0 || handle >= FDTABLE || !desc.m_fdTable[handle].m_open) {
     Data ret{};
+    throw "File descriptor error";
     ret.set(int32_t{-1}); // error
     op_stk.Push(ret);
     state.m_instrPointer++;

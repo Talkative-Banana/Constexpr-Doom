@@ -62570,7 +62570,6 @@
     local.get 1
     local.get 2
     call $R_InitBuffer
-    call $R_InitTextureMapping
     i32.const 0
     i32.const 20971520
     i32.const 0

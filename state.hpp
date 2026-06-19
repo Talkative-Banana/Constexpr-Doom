@@ -537,6 +537,12 @@ struct FileSystem {
   std::array<char, FILESYSTEMSIZE> m_data{};
 };
 
+struct Color { uint8_t r, g, b; };
+
+struct Palette {
+  std::array<Color, 256> m_data{};
+};
+
 struct State {
   Heap m_heap{};
   Stack m_stack{};
@@ -551,6 +557,7 @@ struct State {
   FunctionTable m_functionTable{};
   VirtualTable m_virtualTable{};
   Function *m_activeFunction = nullptr;
+  Palette m_palette{};
   uint64_t m_ticks = 0;
 };
 
