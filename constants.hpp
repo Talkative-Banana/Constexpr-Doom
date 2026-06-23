@@ -6,7 +6,7 @@ static constexpr int BRTABLESIZE = 512;
 static constexpr int BLOCKSIZE = 512;
 static constexpr int MAXCHILDREN = 800;
 static constexpr int LOCALINSTRSIZE = 128;
-static constexpr int BLOCKSTACKSIZE = 512;
+static constexpr int BLOCKSTACKSIZE = 8192;
 static constexpr int MAXNUMPARAMS = 32;
 static constexpr int GCSIZE = 1024;
 static constexpr int LBUFF = 4096;
@@ -25,6 +25,7 @@ static constexpr int GLOBALSIZE = 650;
 static constexpr int MEMORYSIZE = 1024 * 1204 * 8;
 static constexpr int SCREENWIDTH = 320;
 static constexpr int SCREENHEIGHT = 200;
+static constexpr int FRAMES_TO_RUN = 5000;
 
 static constexpr std::string_view CALL = "call";
 static constexpr std::string_view MAIN = "$main";

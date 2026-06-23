@@ -518,8 +518,13 @@ struct Heap {
 };
 
 struct FrameBuffer {
+  static constexpr uint32_t SCREEN_BYTES = SCREENWIDTH * SCREENHEIGHT;
+  static constexpr uint32_t LOG_RESERVE = 4096; // extra room for error/log text
+  static constexpr uint32_t NUM_SCREENS = 5;
+  static constexpr uint32_t TOTAL_SIZE = SCREEN_BYTES * NUM_SCREENS + LOG_RESERVE;
+
   uint32_t m_framePtr = 0;
-  std::array<char, SCREENWIDTH * SCREENHEIGHT> m_data{};
+  std::array<char, TOTAL_SIZE> m_data{};
 };
 
 struct FileDesc {
@@ -559,6 +564,9 @@ struct State {
   Function *m_activeFunction = nullptr;
   Palette m_palette{};
   uint64_t m_ticks = 0;
+  uint32_t m_framesDrawn{};
+  int32_t m_enterStage = 0;
+  int32_t m_startTicCount = 0;
 };
 
 constexpr std::size_t getFunctionId(State &state, std::string_view str) {

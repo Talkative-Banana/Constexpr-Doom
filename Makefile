@@ -1,16 +1,12 @@
 CXX := g++-12
 
 ifdef RUNTIME_MODE
-    CXXFLAGS := -std=c++20 -g -Wall -Wextra -I. -fconstexpr-ops-limit=2147483647 -fconstexpr-loop-limit=2147483647
+    CXXFLAGS := -std=c++20 -g -Wall -Wextra -I. -DRUNTIME_MODE -fconstexpr-ops-limit=2147483647 -fconstexpr-loop-limit=2147483647
 else
     CXXFLAGS := -std=c++20 -O2 -Wall -Wextra -I. -fconstexpr-ops-limit=9223372036854775807 -fconstexpr-loop-limit=2147483647
 endif
 
 COMPILE_FLAGS := -c $(CXXFLAGS)
-
-ifdef RUNTIME_MODE
-	CXXFLAGS += -DRUNTIME_MODE
-endif
 
 TARGET := ctwr
 OBJ := main.o

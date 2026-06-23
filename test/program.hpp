@@ -88977,69 +88977,14 @@ inline static constexpr std::string_view program = R"(
   (func $V_CopyRect (type 14) (param i32 i32 i32 i32 i32 i32 i32 i32)
     (local i32 i32)
     block  ;; label = @1
-      block  ;; label = @2
-        local.get 0
-        i32.const 0
-        i32.lt_s
-        br_if 0 (;@2;)
-        local.get 1
-        i32.const 0
-        i32.lt_s
-        br_if 0 (;@2;)
-        local.get 3
-        local.get 0
-        i32.add
-        i32.const 320
-        i32.gt_s
-        br_if 0 (;@2;)
-        local.get 4
-        local.get 1
-        i32.add
-        i32.const 200
-        i32.gt_s
-        br_if 0 (;@2;)
-        local.get 5
-        i32.const 0
-        i32.lt_s
-        br_if 0 (;@2;)
-        local.get 5
-        local.get 3
-        i32.add
-        local.tee 8
-        i32.const 320
-        i32.gt_s
-        br_if 0 (;@2;)
-        local.get 6
-        i32.const 0
-        i32.lt_s
-        br_if 0 (;@2;)
-        local.get 7
-        i32.const 4
-        i32.gt_u
-        br_if 0 (;@2;)
-        local.get 2
-        i32.const 4
-        i32.gt_u
-        br_if 0 (;@2;)
-        local.get 6
-        local.get 4
-        i32.add
-        local.tee 9
-        i32.const 201
-        i32.lt_s
-        br_if 1 (;@1;)
-      end
-      i32.const 2270
-      i32.const 0
-      call $I_Error
-      local.get 6
-      local.get 4
-      i32.add
-      local.set 9
       local.get 5
       local.get 3
       i32.add
       local.set 8
+      local.get 6
+      local.get 4
+      i32.add
+      local.set 9
     end
     i32.const 459376
     local.get 5

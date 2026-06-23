@@ -14,7 +14,6 @@
 constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   Stack &stk = state.m_stack;
   Stack &op_stk = state.m_opStack;
-
   // get hash of the function name and use it to get the function type and
   // argument count
   size_t funcId = getFunctionId(state, funcName);
@@ -45,10 +44,21 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
     stk.Push(fPtr);
   }
 
-  Data iPtr, bPtr;
+  Data iPtr, bPtr, blockSP{};
+
+  if (state.m_activeFunction != nullptr) {
+    blockSP.set(static_cast<int32_t>(state.m_activeFunction->m_blockStackPointer));
+  } else {
+    blockSP.set(static_cast<int32_t>(BLOCKSTACKSIZE)); // no caller, push sentinel
+  }
+
   iPtr.set(static_cast<int32_t>(state.m_instrPointer + 1));
   // Push return address to recover it after function call
   stk.Push(iPtr);
+
+  stk.Push(blockSP);
+  // Reset block stack for new call
+  f.m_blockStackPointer = BLOCKSTACKSIZE;
 
   bPtr.set(static_cast<int32_t>(stk.m_basePointer));
   // Push the base ptr to recover it after function call
@@ -66,7 +76,8 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   }
 
   for (uint32_t i = paramCount; i-- > 0;) {
-    args[i] = op_stk.Pop();
+    auto tmp = op_stk.Pop();
+    args[i] = tmp;
   }
 
   for (uint32_t i = 0; i < paramCount; ++i) {
@@ -167,20 +178,18 @@ constexpr STATUS HandleSelect(State &state) {
 }
 
 constexpr STATUS HandleReturn(State &state) {
-  // Move the stack pointer back to the base pointer
   Stack &stk = state.m_stack;
   stk.m_stackPointer = stk.m_basePointer;
-  // Pop the base pointer and return address
-  Data bPtr = stk.Pop();
-  Data iPtr = stk.Pop();
-  Data fPtr = stk.Pop();
-  // Update the instruction pointer and base pointer to return to the caller
-  stk.m_basePointer = bPtr.get<int32_t>();
+
+  Data bPtr    = stk.Pop();
+  Data blockSP = stk.Pop();
+  Data iPtr    = stk.Pop();
+  Data fPtr    = stk.Pop();
+
+  stk.m_basePointer    = bPtr.get<int32_t>();
   state.m_instrPointer = iPtr.get<int32_t>();
-  // Restore the active function
+
   if (fPtr.get<int32_t>() == 0) {
-    // If the function pointer is 0, it means we are returning from the main
-    // function
     state.m_activeFunction = nullptr;
     return STATUS::OK;
   }
@@ -189,9 +198,12 @@ constexpr STATUS HandleReturn(State &state) {
     throw "fPtr corrupted";
   }
 
-  Function &f = state.m_functionTable
-                    .m_data[fPtr.get<int32_t>() % MAXFUNCTIONS];
-  state.m_activeFunction = &f;
+  Function &callerF = state.m_functionTable.m_data[
+    fPtr.get<int32_t>() % MAXFUNCTIONS];
+  callerF.m_blockStackPointer = 
+    static_cast<uint32_t>(blockSP.get<int32_t>());
+  state.m_activeFunction = &callerF;
+
   return STATUS::OK;
 }
 
@@ -247,22 +259,11 @@ constexpr STATUS HandleBranch(State &state, Instr &instr) {
 }
 
 constexpr STATUS HandleBrTable(State &state, const Instr &instr) {
-  // pop index
   Data idxData = state.m_opStack.Pop();
-  int32_t idx = idxData.get<int32_t>();
+  uint32_t idx = static_cast<uint32_t>(idxData.get<int32_t>());
 
-  // clamp to default if out of bounds
-  // m_brTable is your array of branch targets
-
-  if (idx < 0) {
-    throw "Invalid negative index in br_table";
-  }
-
-  // m_operandValue is the count
-  int32_t target;
-  uint32_t clampedIdx =
-      (idx <= instr.m_brCount - 1) ? idx : instr.m_brCount - 1;
-  target = state.m_brTablePool.m_data[instr.m_brTableOffset + clampedIdx];
+  uint32_t clampedIdx = (idx <= static_cast<uint32_t>(instr.m_brCount - 1)) ? idx : static_cast<uint32_t>(instr.m_brCount - 1);
+  int32_t target = state.m_brTablePool.m_data[instr.m_brTableOffset + clampedIdx];
 
   Instr newInstr{};
   newInstr.m_op = OP::_br;
@@ -344,7 +345,7 @@ constexpr STATUS HandleCallIndirect(State &state) {
 
 constexpr bool isArithmetic(const Instr &instr) {
   return instr.m_mem == Member::_add || instr.m_mem == Member::_sub ||
-         instr.m_mem == Member::_mul || instr.m_mem == Member::_le_s ||
+         instr.m_mem == Member::_mul || instr.m_mem == Member::_le_s ||  instr.m_mem == Member::_le_u ||
          instr.m_mem == Member::_ge_s || instr.m_mem == Member::_ge_u ||
          instr.m_mem == Member::_and || instr.m_mem == Member::_eqz ||
          instr.m_mem == Member::_lt_s || instr.m_mem == Member::_lt_u ||
@@ -409,6 +410,9 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
       result = a.get<T1>() * b.get<T1>();
     } else if (instr.m_mem == Member::_le_s) {
       result = a.get<T1>() <= b.get<T1>();
+    } else if (instr.m_mem == Member::_le_u) {
+      using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
+      result = static_cast<UT>(a.get<T1>()) <= static_cast<UT>(b.get<T1>());
     } else if (instr.m_mem == Member::_and) {
       result = a.get<T1>() & b.get<T1>();
     } else if (instr.m_mem == Member::_eqz) {
@@ -433,8 +437,20 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
       }
       result = static_cast<T1>(ua % ub);
     } else if (instr.m_mem == Member::_shl) {
-      result = a.get<T1>() << b.get<T1>();
+      result = a.get<T1>() << (b.get<T1>() & (sizeof(T1) * 8 - 1));
+    } else if (instr.m_mem == Member::_shr_s) {
+      result = a.get<T1>() >> (b.get<T1>() & (sizeof(T1) * 8 - 1));
+    } else if (instr.m_mem == Member::_shr_u) {
+      using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
+      result = static_cast<T1>(static_cast<UT>(a.get<T1>()) >> 
+             (static_cast<UT>(b.get<T1>()) & (sizeof(T1) * 8 - 1)));
     } else if (instr.m_mem == Member::_div_s) {
+      if (b.get<T1>() == 0) {
+        throw "div_s: division by zero";
+      }
+      if (a.get<T1>() == std::numeric_limits<T1>::min() && b.get<T1>() == -1) {
+        throw "div_s: overflow";
+      }
       result = a.get<T1>() / b.get<T1>();
     } else if (instr.m_mem == Member::_div_u) {
       using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
@@ -442,12 +458,6 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
                                static_cast<UT>(b.get<T1>()));
     } else if (instr.m_mem == Member::_ne) {
       result = a.get<T1>() != b.get<T1>();
-    } else if (instr.m_mem == Member::_shr_s) {
-      result = a.get<T1>() >> b.get<T1>();
-    } else if (instr.m_mem == Member::_shr_u) {
-      using UT = std::conditional_t<sizeof(T1) == 4, uint32_t, uint64_t>;
-      result = static_cast<T1>(static_cast<UT>(a.get<T1>()) >>
-                               static_cast<UT>(b.get<T1>()));
     } else if (instr.m_mem == Member::_gt_s) {
       result = a.get<T1>() > b.get<T1>();
     } else if (instr.m_mem == Member::_ge_s) {
@@ -507,7 +517,8 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
       }
       T1 val{};
       for (size_t i = 0; i < sizeof(T1); i++) {
-        val |= static_cast<T1>(memory.m_data[addr + offset + i]) << (i * 8);
+        using UT = std::make_unsigned_t<T1>;
+        val |= static_cast<T1>(static_cast<UT>(memory.m_data[addr + offset + i]) << (i * 8));
       }
 
       Data data;
@@ -568,26 +579,23 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
       data.set(static_cast<T1>(val));
       op_stk.Push(data);
     } else if (instr.m_mem == Member::_load16_s) {
-      Data base = op_stk.Pop();
-      int32_t addr = base.get<int32_t>();
-      if (addr < 0) {
-        throw "Invalid base ptr in load16_s";
-      }
+        Data base = op_stk.Pop();
+        int32_t addr = base.get<int32_t>();
+        if (addr < 0) throw "Invalid base ptr in load16_s";
+        if (offset < 0) throw "Invalid offset in load16_s";
+        if (addr + offset >= MEMORYSIZE) throw "Invalid memory access in i32.load";
 
-      if (offset < 0) {
-        throw "Invalid offset in load16_s";
-      }
-      if (addr + offset >= MEMORYSIZE) {
-        throw "Invalid memory access in i32.load";
-      }
-      int16_t val{};
-      for (size_t i = 0; i < sizeof(int16_t); i++) {
-        val |= static_cast<int16_t>(memory.m_data[addr + offset + i])
-               << (i * 8);
-      }
-      Data data;
-      data.set(static_cast<T1>(val));
-      op_stk.Push(data);
+        uint16_t raw = 0;
+        for (size_t i = 0; i < sizeof(uint16_t); i++) {
+            raw |= static_cast<uint16_t>(
+                static_cast<uint16_t>(memory.m_data[addr + offset + i]) << (i * 8)
+            );
+        }
+        // Sign-extend: reinterpret as signed int16, then extend to T1
+        int16_t val = static_cast<int16_t>(raw);
+        Data data;
+        data.set(static_cast<T1>(val));
+        op_stk.Push(data);
     } else if (instr.m_mem == Member::_store ||
                instr.m_mem == Member::_store8 ||
                instr.m_mem == Member::_store16) {

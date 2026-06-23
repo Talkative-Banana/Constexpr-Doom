@@ -542,7 +542,7 @@ def build_state(src: str) -> ParsedState:
             state.vtable_entries += parse_elem(child)
     
     # ── Reconstruct dead-stripped tantoangle table ──────────────
-    inject_tantoangle(state.memory, base_addr=185344)
+    # inject_tantoangle(state.memory, base_addr=185344)
     
     last = 0
     for i in range(2049):
