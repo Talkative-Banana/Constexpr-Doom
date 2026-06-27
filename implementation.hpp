@@ -240,30 +240,32 @@ constexpr STATUS I_ALLOCLOW(State &state) {
 }
 
 constexpr STATUS I_ZONEBASE(State &state) {
-  // Update the value at ptr
   Memory &memory = state.m_memory;
   Stack &op_stk = state.m_opStack;
 
-  int32_t m_data = 6;
+  // I_ZoneBase(int* size) -> void*
+  int32_t sizePtr = op_stk.Pop().get<int32_t>(); // &size output param
 
-  // 1. Pop argument
-  int32_t address = op_stk.Pop().get<int32_t>();
+  constexpr int32_t ZONE_SIZE = 6 * 1024 * 1024; // 6MB
 
-  int32_t val = m_data * 1024 * 1024;
+  // Write zone size into the output param
+  memory.m_data[sizePtr + 0] = (ZONE_SIZE >> 0)  & 0xFF;
+  memory.m_data[sizePtr + 1] = (ZONE_SIZE >> 8)  & 0xFF;
+  memory.m_data[sizePtr + 2] = (ZONE_SIZE >> 16) & 0xFF;
+  memory.m_data[sizePtr + 3] = (ZONE_SIZE >> 24) & 0xFF;
 
-  // 3. Write value as 4 bytes (little-endian) into memory
-  if (address >= 0 && address + 3 < MEMORYSIZE) {
-    memory.m_data[address + 0] = static_cast<uint8_t>((val >> 0) & 0xFF);
-    memory.m_data[address + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
-    memory.m_data[address + 2] = static_cast<uint8_t>((val >> 16) & 0xFF);
-    memory.m_data[address + 3] = static_cast<uint8_t>((val >> 24) & 0xFF);
-  }
+  // Allocate zone from heap and return pointer
+  int32_t ptr = state.m_heap.m_heapPtr;
+  state.m_heap.m_heapPtr += ZONE_SIZE;
+  for (int32_t i = 0; i < ZONE_SIZE; i++)
+    state.m_memory.m_data[ptr + i] = 0;
 
-  Data data{};
-  data.set(val);
-  op_stk.Push(data);
+  Data ret{};
+  ret.set(ptr);
+  op_stk.Push(ret);
 
-  return MALLOC(state);
+  state.m_instrPointer++;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_NETCMD(State &state) {
@@ -456,8 +458,9 @@ constexpr STATUS I_ERROR(State &state) {
   int depth = 0;
   while (bp > 0 && depth < 20) {
     int32_t bPtr_idx = bp ;
-    int32_t iPtr_idx = bp - 1;
-    int32_t fPtr_idx = bp - 2;
+    // int32_t blPtr_idx = bp - 1;
+    int32_t iPtr_idx = bp - 2;
+    int32_t fPtr_idx = bp - 3;
     if (fPtr_idx < 0) break;
 
     std::fprintf(stderr, "Active function at crash: %.*s\n",
@@ -466,6 +469,7 @@ constexpr STATUS I_ERROR(State &state) {
 
     int32_t fPtr = stk.m_data[fPtr_idx].get<int32_t>();
     int32_t iPtr = stk.m_data[iPtr_idx].get<int32_t>();
+    // int32_t blPtr = stk.m_data[blPtr_idx].get<int32_t>();
     int32_t bPtr = stk.m_data[bPtr_idx].get<int32_t>();
     if (fPtr > 0 && fPtr < MAXFUNCTIONS) {
       std::fprintf(stderr, "  [%d] funcId=%d iPtr=%d\n", depth, fPtr, iPtr);

@@ -3,6 +3,7 @@
 #include "types.hpp"
 #include <array>
 #include <string_view>
+#include <cstdio>
 
 constexpr void writeFrameByte(FrameBuffer &fb, char c) {
   if (fb.m_framePtr < FrameBuffer::TOTAL_SIZE) {
@@ -485,9 +486,14 @@ constexpr STATUS MALLOC(State &state) {
 
   // TODO: Fix this to get ptr dynamically [bump alloc for now]
   // 2. get a place to save result to
-  int32_t ptr = state.m_heap.m_heapPtr;
+  int32_t ptr = 0;
+
+  if (state.m_heap.m_heapPtr + size >= MEMORYSIZE)
+    throw "heap overflow";
 
   // 3. Increase the ptr
+  state.m_heap.m_heapPtr = (state.m_heap.m_heapPtr + 3) & ~3;
+  ptr = state.m_heap.m_heapPtr;
   state.m_heap.m_heapPtr += size;
 
   // 4. Push return value (pointer)
@@ -717,14 +723,18 @@ constexpr STATUS CALLOC(State &state) {
 
   // TODO: Fix this to get ptr dynamically
   // 2. get a place to save result to
-  int32_t ptr = state.m_heap.m_heapPtr;
+  int32_t ptr = 0;
 
-  // Set to zero
+  if (state.m_heap.m_heapPtr + size >= MEMORYSIZE)
+    throw "heap overflow";
+
+  state.m_heap.m_heapPtr = (state.m_heap.m_heapPtr + 3) & ~3;
+  ptr = state.m_heap.m_heapPtr;
+
   for (int i = 0; i < size * nmemb; i++) {
-    state.m_memory.m_data[i + ptr] = 0;
+      state.m_memory.m_data[ptr + i] = 0;
   }
 
-  // 3. Increase the ptr
   state.m_heap.m_heapPtr += size * nmemb;
 
   // 4. Push return value (pointer)
@@ -1282,6 +1292,14 @@ constexpr STATUS REALLOC(State &state) {
   int32_t size = op_stk.Pop().get<int32_t>();
   int32_t rPtr = op_stk.Pop().get<int32_t>();
 
+  if (rPtr >= MEMORYSIZE) {
+  #ifdef RUNTIME_MODE
+      fprintf(stderr, "REALLOC BAD PTR %d size=%d\n", rPtr, size);
+  #endif
+    throw "bad realloc ptr";
+  }
+
+
   int32_t newPtr = 0;
 
   if (rPtr == 0) {
@@ -1293,7 +1311,8 @@ constexpr STATUS REALLOC(State &state) {
       state.m_instrPointer++;
       return STATUS::OK;
     }
-    newPtr = state.m_heap.m_heapPtr;
+    newPtr = (state.m_heap.m_heapPtr + 3) & ~3;
+    state.m_heap.m_heapPtr = newPtr;
     state.m_heap.m_heapPtr += size;
 
     Data ret{};
@@ -1307,7 +1326,8 @@ constexpr STATUS REALLOC(State &state) {
     op_stk.Push(ret);
   } else {
     // Allocate new block and copy old contents
-    newPtr = state.m_heap.m_heapPtr;
+    newPtr = (state.m_heap.m_heapPtr + 3) & ~3;
+    state.m_heap.m_heapPtr = newPtr;
     state.m_heap.m_heapPtr += size;
 
     // Copy from old ptr (we don't know old size, copy 'size' bytes as best

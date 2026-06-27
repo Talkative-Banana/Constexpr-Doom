@@ -5,9 +5,6 @@
 #include <string_view>
 #include <bit>
 
-struct L1Cache {};
-struct L2Cache {};
-
 
 struct Data {
   std::string_view m_strId{};
@@ -467,8 +464,6 @@ struct FunctionTable {
   std::array<Function, MAXFUNCTIONS> m_data{};
 };
 
-struct Type {};
-
 struct VirtualTable {
   int m_count{};
   std::array<Function *, MAXVIRTUALTABLESIZE> m_data{};
@@ -482,8 +477,6 @@ struct Global {
   int m_count{};
   std::array<Data, GLOBALSIZE> m_data{};
 };
-
-struct Export {};
 
 struct Stack {
   constexpr void Push(const Data &data) {

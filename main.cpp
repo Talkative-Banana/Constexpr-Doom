@@ -34,13 +34,11 @@ int main() {
 }
 #else
 
-// constexpr auto finalBuffer = RunNoCheck();
-// constexpr std::string_view SV(finalBuffer.m_data.data(), finalBuffer.m_data.size());
-// auto x = inspect<SV>();
-// #endifSV>();
+constexpr auto finalBuffer = RunNoCheck();
+constexpr std::string_view SV(finalBuffer.m_data.data(), finalBuffer.m_data.size());
+auto x = inspect<SV>();
 
 #endif
-
 /*
 V => Video
 M => Menu

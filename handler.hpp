@@ -8,6 +8,7 @@
 #include "types.hpp"
 #include <array>
 #include <bit>
+#include <iostream>
 #include <cstdint>
 #include <string_view>
 
@@ -44,7 +45,7 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
     stk.Push(fPtr);
   }
 
-  Data iPtr, bPtr, blockSP{};
+  Data iPtr, bPtr, blockSP;
 
   if (state.m_activeFunction != nullptr) {
     blockSP.set(static_cast<int32_t>(state.m_activeFunction->m_blockStackPointer));
@@ -83,6 +84,69 @@ constexpr STATUS HandleCall(State &state, const std::string_view &funcName) {
   for (uint32_t i = 0; i < paramCount; ++i) {
     stk.Push(args[i]);
   }
+
+//   #ifdef RUNTIME_MODE
+//     if(funcName == "$STlib_drawNum"){
+//     printf("\n=== STlib_drawNum ===\n");
+//     printf("paramCount=%u\n", f.m_paramCount);
+//     printf("localCount=%u\n", f.m_localCount);
+
+//     for(uint32_t i=0;i<f.m_paramCount;i++)
+//     {
+//         auto &a = stk.m_data[stk.m_basePointer + 1 + i];
+
+//         printf("param[%u] data=%llu str='%.*s'\n",
+//                i,
+//                (unsigned long long)a.m_data,
+//                (int)a.m_strId.size(),
+//                a.m_strId.data());
+//     }
+//   }
+//   #endif
+
+//   #ifdef RUNTIME_MODE
+//   if (funcName == "$V_CopyRect"){
+//     auto bp = stk.m_basePointer;
+//     std::cerr
+//         << "CopyRect("
+//         << stk.m_data[bp+1].get<int32_t>() << ", "
+//         << stk.m_data[bp+2].get<int32_t>() << ", "
+//         << stk.m_data[bp+3].get<int32_t>() << ", "
+//         << stk.m_data[bp+4].get<int32_t>() << ", "
+//         << stk.m_data[bp+5].get<int32_t>() << ", "
+//         << stk.m_data[bp+6].get<int32_t>() << ", "
+//         << stk.m_data[bp+7].get<int32_t>() << ", "
+//         << stk.m_data[bp+8].get<int32_t>()
+//         << ")\n";
+//   }
+//   #endif
+
+//   #ifdef RUNTIME_MODE
+//     if (funcName == "$STlib_updateNum"){
+//         auto bp = stk.m_basePointer;
+
+//         uint32_t n = stk.m_data[bp + 1].get<uint32_t>();
+
+//         std::cerr << "\nSTlib_updateNum(" << n << ")\n";
+
+//         auto &mem = state.m_memory.m_data;
+
+//         auto load32 = [&](uint32_t addr) -> uint32_t {
+//             return mem[addr]
+//                 | (mem[addr+1] << 8)
+//                 | (mem[addr+2] << 16)
+//                 | (mem[addr+3] << 24);
+//         };
+
+//         for(int i=0;i<48;i+=4)
+//         {
+//             std::cerr
+//                 << "  +" << i
+//                 << " = " << load32(n+i)
+//                 << "\n";
+//         }
+// }
+// #endif
   // Args are already pushed by the caller, so we just need to push space for
   // local variables
   uint32_t localCount = f.m_localCount;
@@ -402,12 +466,16 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
       a.m_data = op_stk.Pop().m_data;
     }
     T1 result;
+    // signed overflow is ub but well defined in wasm
     if (instr.m_mem == Member::_add) {
-      result = a.get<T1>() + b.get<T1>();
+      using UT = std::make_unsigned_t<T1>;
+      result = static_cast<T1>(static_cast<UT>(a.get<T1>()) + static_cast<UT>(b.get<T1>()));
     } else if (instr.m_mem == Member::_sub) {
-      result = a.get<T1>() - b.get<T1>();
+      using UT = std::make_unsigned_t<T1>;
+      result = static_cast<T1>(static_cast<UT>(a.get<T1>()) - static_cast<UT>(b.get<T1>()));
     } else if (instr.m_mem == Member::_mul) {
-      result = a.get<T1>() * b.get<T1>();
+      using UT = std::make_unsigned_t<T1>;
+      result = static_cast<T1>(static_cast<UT>(a.get<T1>()) * static_cast<UT>(b.get<T1>()));
     } else if (instr.m_mem == Member::_le_s) {
       result = a.get<T1>() <= b.get<T1>();
     } else if (instr.m_mem == Member::_le_u) {
@@ -437,7 +505,8 @@ constexpr STATUS HandleI(State &state, const Instr &instr) {
       }
       result = static_cast<T1>(ua % ub);
     } else if (instr.m_mem == Member::_shl) {
-      result = a.get<T1>() << (b.get<T1>() & (sizeof(T1) * 8 - 1));
+      using UT = std::make_unsigned_t<T1>;
+      result = static_cast<T1>(static_cast<UT>(a.get<T1>()) << (b.get<T1>() & (sizeof(T1) * 8 - 1)));
     } else if (instr.m_mem == Member::_shr_s) {
       result = a.get<T1>() >> (b.get<T1>() & (sizeof(T1) * 8 - 1));
     } else if (instr.m_mem == Member::_shr_u) {
