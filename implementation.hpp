@@ -2,8 +2,12 @@
 #include "state.hpp"
 #include "syscall.hpp"
 #include "types.hpp"
+#include <cstdio>
 #include <array>
 #include <string_view>
+
+
+constexpr STATUS HandleCall(State &state, const std::string_view &funcName);
 
 constexpr bool isImplementationCall(std::string_view funcName) {
   return funcName == "$I_ReadScreen" || funcName == "$I_UpdateNoBlit" ||
@@ -24,13 +28,30 @@ constexpr bool isImplementationCall(std::string_view funcName) {
          funcName == "$I_UnRegisterSong" || funcName == "$I_ZoneBase" ||
          funcName == "$I_Error";
 }
+constexpr int32_t SCREENS_GLOBAL_ADDR = 459392;
+
 // -------- Graphics --------
 constexpr STATUS I_READSCREEN(State &state) {
-  if (state.m_ticks != 1e9) {
-    throw "Unimplemented I_ReadScreen";
+  Stack &op_stk = state.m_opStack;
+  int32_t destPtr = op_stk.Pop().get<int32_t>();
+
+  auto &mem = state.m_memory.m_data;
+  int32_t screenBuf = static_cast<int32_t>(mem[SCREENS_GLOBAL_ADDR + 0])
+               | (static_cast<int32_t>(mem[SCREENS_GLOBAL_ADDR + 1]) << 8)
+               | (static_cast<int32_t>(mem[SCREENS_GLOBAL_ADDR + 2]) << 16)
+               | (static_cast<int32_t>(mem[SCREENS_GLOBAL_ADDR + 3]) << 24);
+
+  if (screenBuf != 0 && destPtr >= 0) {
+    constexpr int32_t SCREEN_BYTES = SCREENWIDTH * SCREENHEIGHT;
+    for (int32_t i = 0; i < SCREEN_BYTES; i++) {
+      if (destPtr + i < MEMORYSIZE && screenBuf + i < MEMORYSIZE) {
+        mem[destPtr + i] = mem[screenBuf + i];
+      }
+    }
   }
+
   state.m_instrPointer++;
-  return STATUS::SYSFUNCERROR;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_UPDATENOBLIT(State &state) {
@@ -51,7 +72,6 @@ constexpr STATUS I_SETPALETTE(State &state) {
   state.m_instrPointer++;
   return STATUS::OK;
 }
-constexpr int32_t SCREENS_GLOBAL_ADDR = 459392;
 
 constexpr STATUS I_FINISHUPDATE(State &state) {
   auto &mem = state.m_memory.m_data;
@@ -65,20 +85,26 @@ constexpr STATUS I_FINISHUPDATE(State &state) {
     return STATUS::OK;
   }
 
-  uint32_t out = 0;
-  for (int y = 0; y < SCREENHEIGHT; y++) {
-    for (int x = 0; x < SCREENWIDTH; x++) {
-      int srcX = x * 320 / SCREENWIDTH;
-      int srcY = y * 200 / SCREENHEIGHT;
-      uint8_t idx = state.m_memory.m_data[screenBuf + srcY * 320 + srcX];
-      auto &c = state.m_palette.m_data[idx];
-      int brightness = (c.r + c.g + c.b) / 3;
-      state.m_frameBuffer.m_data[out++] = " .:-=+*#%@"[brightness * 10 / 256];
-    }
-  }
-  state.m_frameBuffer.m_framePtr = out;
-
+  state.m_framesDrawn++;
   state.m_instrPointer++;
+
+  if (state.m_framesDrawn == FRAMES_TO_RUN) {
+    // Only render the very last frame
+    uint32_t out = 0;
+    for (int y = 0; y < SCREENHEIGHT; y++) {
+      for (int x = 0; x < SCREENWIDTH; x++) {
+        int srcX = x * 320 / SCREENWIDTH;
+        int srcY = y * 200 / SCREENHEIGHT;
+        uint8_t idx = state.m_memory.m_data[screenBuf + srcY * 320 + srcX];
+        auto &c = state.m_palette.m_data[idx];
+        int brightness = (c.r + c.g + c.b) / 3;
+        state.m_frameBuffer.m_data[out++] = " .:-=+*#%@"[brightness * 10 / 256];
+      }
+    }
+    state.m_frameBuffer.m_framePtr = out;
+    return STATUS::ISBAD;
+  }
+
   return STATUS::OK;
 }
 
@@ -92,10 +118,75 @@ constexpr STATUS I_STARTFRAME(State &state) {
   return STATUS::OK;
 }
 
+constexpr int32_t alloc_zeroed(State &state, int32_t size) {
+  int32_t ptr = state.m_heap.m_heapPtr;
+  state.m_heap.m_heapPtr += size;
+  for (int32_t i = 0; i < size; i++)
+    state.m_memory.m_data[ptr + i] = 0;
+  return ptr;
+}
+
+// -------- Synthetic input injection state (add to State in state.hpp) --------
+
+constexpr int32_t writeEvent(State &state, int32_t type, int32_t data1, int32_t data2, int32_t data3) {
+  int32_t evPtr = alloc_zeroed(state, 16); // event_t = 4 x i32 = 16 bytes
+  auto &mem = state.m_memory.m_data;
+
+  auto writeI32 = [&](int32_t addr, int32_t val) {
+    mem[addr + 0] = static_cast<uint8_t>((val >> 0) & 0xFF);
+    mem[addr + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
+    mem[addr + 2] = static_cast<uint8_t>((val >> 16) & 0xFF);
+    mem[addr + 3] = static_cast<uint8_t>((val >> 24) & 0xFF);
+  };
+
+  writeI32(evPtr + 0, type);   // evtype_t type
+  writeI32(evPtr + 4, data1);  // key code
+  writeI32(evPtr + 8, data2);  // ascii / same as data1 for keys
+  writeI32(evPtr + 12, data3); // unused for keys
+
+  return evPtr;
+}
+
+constexpr STATUS postKeyEvent(State &state, int32_t evType, int32_t key) {
+  int32_t evPtr = writeEvent(state, evType, key, key, 0);
+
+  Data arg{};
+  arg.set(evPtr);
+  state.m_opStack.Push(arg);
+
+  STATUS res = HandleCall(state, "$D_PostEvent");
+  if (res != STATUS::OK) {
+    throw "D_PostEvent call failed";
+  }
+  return STATUS::OK;
+}
+
+
 constexpr STATUS I_STARTTIC(State &state) {
+  constexpr int32_t EV_KEYDOWN = 0;
+  constexpr int32_t EV_KEYUP = 1;
+  constexpr int32_t KEY_ENTER = 13;
+
+  state.m_startTicCount++;
+
+  // Stage 0->1: New Game (down)
+  if (state.m_enterStage == 0) {
+    state.m_enterStage = 1;
+    return postKeyEvent(state, EV_KEYDOWN, KEY_ENTER);
+  }
+  // Stage 1->2: New Game (up)
+  if (state.m_enterStage == 1) {
+    state.m_enterStage = 0;
+    return postKeyEvent(state, EV_KEYUP, KEY_ENTER);
+  }
   state.m_instrPointer++;
   return STATUS::OK;
 }
+
+// constexpr STATUS I_STARTTIC(State &state) {
+//   state.m_instrPointer++;
+//   return STATUS::OK;
+// }
 
 constexpr STATUS I_GETTIME(State &state) {
   Stack &op_stk = state.m_opStack;
@@ -136,14 +227,6 @@ constexpr STATUS I_INIT(State &state) {
   return STATUS::OK;
 }
 
-constexpr int32_t alloc_zeroed(State &state, int32_t size) {
-  int32_t ptr = state.m_heap.m_heapPtr;
-  state.m_heap.m_heapPtr += size;
-  for (int32_t i = 0; i < size; i++)
-    state.m_memory.m_data[ptr + i] = 0;
-  return ptr;
-}
-
 constexpr STATUS I_ALLOCLOW(State &state) {
   // Just a zero memory allocator
   Stack &op_stk = state.m_opStack;
@@ -157,30 +240,32 @@ constexpr STATUS I_ALLOCLOW(State &state) {
 }
 
 constexpr STATUS I_ZONEBASE(State &state) {
-  // Update the value at ptr
   Memory &memory = state.m_memory;
   Stack &op_stk = state.m_opStack;
 
-  int32_t m_data = 6;
+  // I_ZoneBase(int* size) -> void*
+  int32_t sizePtr = op_stk.Pop().get<int32_t>(); // &size output param
 
-  // 1. Pop argument
-  int32_t address = op_stk.Pop().get<int32_t>();
+  constexpr int32_t ZONE_SIZE = 6 * 1024 * 1024; // 6MB
 
-  int32_t val = m_data * 1024 * 1024;
+  // Write zone size into the output param
+  memory.m_data[sizePtr + 0] = (ZONE_SIZE >> 0)  & 0xFF;
+  memory.m_data[sizePtr + 1] = (ZONE_SIZE >> 8)  & 0xFF;
+  memory.m_data[sizePtr + 2] = (ZONE_SIZE >> 16) & 0xFF;
+  memory.m_data[sizePtr + 3] = (ZONE_SIZE >> 24) & 0xFF;
 
-  // 3. Write value as 4 bytes (little-endian) into memory
-  if (address >= 0 && address + 3 < MEMORYSIZE) {
-    memory.m_data[address + 0] = static_cast<uint8_t>((val >> 0) & 0xFF);
-    memory.m_data[address + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
-    memory.m_data[address + 2] = static_cast<uint8_t>((val >> 16) & 0xFF);
-    memory.m_data[address + 3] = static_cast<uint8_t>((val >> 24) & 0xFF);
-  }
+  // Allocate zone from heap and return pointer
+  int32_t ptr = state.m_heap.m_heapPtr;
+  state.m_heap.m_heapPtr += ZONE_SIZE;
+  for (int32_t i = 0; i < ZONE_SIZE; i++)
+    state.m_memory.m_data[ptr + i] = 0;
 
-  Data data{};
-  data.set(val);
-  op_stk.Push(data);
+  Data ret{};
+  ret.set(ptr);
+  op_stk.Push(ret);
 
-  return MALLOC(state);
+  state.m_instrPointer++;
+  return STATUS::OK;
 }
 
 constexpr STATUS I_NETCMD(State &state) {
@@ -250,7 +335,7 @@ constexpr STATUS I_TACTILE(State &state) {
 
 constexpr STATUS I_SUBMITSOUND(State &state) {
   state.m_instrPointer++;
-  return STATUS::ISBAD;
+  return STATUS::OK;
 }
 constexpr STATUS I_SETCHANNELS(State &state) {
   state.m_instrPointer++;
@@ -349,9 +434,59 @@ constexpr STATUS I_UNREGISTERSONG(State &state) {
   return STATUS::OK;
 }
 
+#ifdef RUNTIME_MODE
+STATUS I_ERROR(State &state) {
+#else
 constexpr STATUS I_ERROR(State &state) {
-  // Update the value at ptr
-  PUTS(state);
+#endif
+  if (state.m_frameBuffer.m_framePtr < FrameBuffer::SCREEN_BYTES) {
+    state.m_frameBuffer.m_framePtr = FrameBuffer::SCREEN_BYTES;
+  }
+
+  PRINTF(state);
+
+#ifdef RUNTIME_MODE
+  std::fprintf(stderr, "\n[I_ERROR] active function: %s\n",
+  state.m_activeFunction ? state.m_activeFunction->m_name.data() : "(null)");
+  std::fprintf(stderr, "[I_ERROR] instrPointer: %zu\n", state.m_instrPointer);
+  std::fprintf(stderr, "[I_ERROR] startTicCount: %d\n", state.m_startTicCount);
+  std::fprintf(stderr, "[I_ERROR] framesDrawn: %d\n", state.m_framesDrawn);
+
+  std::fprintf(stderr, "[I_ERROR] WASM call chain:\n");
+  Stack &stk = state.m_stack;
+  int32_t bp = stk.m_basePointer;
+  int depth = 0;
+  while (bp > 0 && depth < 20) {
+    int32_t bPtr_idx = bp ;
+    // int32_t blPtr_idx = bp - 1;
+    int32_t iPtr_idx = bp - 2;
+    int32_t fPtr_idx = bp - 3;
+    if (fPtr_idx < 0) break;
+
+    std::fprintf(stderr, "Active function at crash: %.*s\n",
+    (int)state.m_activeFunction->m_name.size(),
+    state.m_activeFunction->m_name.data());
+
+    int32_t fPtr = stk.m_data[fPtr_idx].get<int32_t>();
+    int32_t iPtr = stk.m_data[iPtr_idx].get<int32_t>();
+    // int32_t blPtr = stk.m_data[blPtr_idx].get<int32_t>();
+    int32_t bPtr = stk.m_data[bPtr_idx].get<int32_t>();
+    if (fPtr > 0 && fPtr < MAXFUNCTIONS) {
+      std::fprintf(stderr, "  [%d] funcId=%d iPtr=%d\n", depth, fPtr, iPtr);
+    } else {
+      std::fprintf(stderr, "  [%d] fPtr=%d iPtr=%d (main/invalid)\n", depth, fPtr, iPtr);
+    }
+
+    if (fPtr > 0 && fPtr < MAXFUNCTIONS) {
+      auto &f = state.m_functionTable.m_data[fPtr % MAXFUNCTIONS];
+      std::fprintf(stderr, "Direct caller name: %.*s\n",
+        (int)f.m_name.size(), f.m_name.data());
+    }
+    bp = bPtr;
+    depth++;
+  }
+#endif
+
   return STATUS::ISBAD;
 }
 

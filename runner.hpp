@@ -3,6 +3,7 @@
 #include "handler.hpp"
 #include "parsedState.hpp"
 #include <array>
+#include <memory>
 #include <cstdint>
 #include <string_view>
 
@@ -65,10 +66,22 @@ constexpr STATUS loop(State &state) {
       break;
     }
 
-    // ERROR_MEMCPY, ERROR_FSEEK, ERROR_FTELL, ERROR_FREAD, ERROR_FCLOSE,
-    // ERROR_EXIT, ERROR_MKDIR, ERROR_ATOI, ERROR_GETCHAR,
-    // ERROR_FPRINTF, ERROR_FPUTC, ERROR_FWRITE, ERROR_STRCMP, ERROR_WRITE,
-    // ERROR_FEOF, ERROR_FSCANF, ERROR_SSCANF,
+  // ERROR_FSEEK,
+  // ERROR_FTELL,
+  // ERROR_FREAD,
+  // ERROR_FCLOSE,
+  // ERROR_EXIT,
+  // ERROR_MKDIR,
+  // ERROR_ATOI,
+  // ERROR_GETCHAR,
+  // ERROR_FPUTC,
+  // ERROR_FWRITE,
+  // ERROR_STRCMP,
+  // ERROR_WRITE,
+  // ERROR_FEOF,
+  // ERROR_FSCANF,
+  // ERROR_SSCANF,
+  // SYSFUNCERROR,
     case OP::_call: {
       STATUS res = HandleCall(state, _op.m_operand);
       if (res == STATUS::SYSFUNCERROR) {
@@ -76,6 +89,36 @@ constexpr STATUS loop(State &state) {
         return res;
       } else if (res == STATUS::ISBAD) {
         return res;
+      } else if (res == STATUS::ERROR_FSEEK){
+        throw "Implementation Handling Failed! (ERROR_FSEEK)";
+      } else if (res == STATUS::ERROR_FTELL){
+        throw "Implementation Handling Failed! (ERROR_FTELL)";
+      } else if (res == STATUS::ERROR_FREAD){
+        throw "Implementation Handling Failed! (ERROR_FREAD)";
+      } else if (res == STATUS::ERROR_FCLOSE){
+        throw "Implementation Handling Failed! (ERROR_FCLOSE)";
+      } else if (res == STATUS::ERROR_EXIT){
+        throw "Implementation Handling Failed! (ERROR_EXIT)";
+      } else if (res == STATUS::ERROR_MKDIR){
+        throw "Implementation Handling Failed! (ERROR_MKDIR)";
+      } else if (res == STATUS::ERROR_ATOI){
+        throw "Implementation Handling Failed! (ERROR_ATOI)";
+      } else if (res == STATUS::ERROR_GETCHAR){
+        throw "Implementation Handling Failed! (ERROR_GETCHAR)";
+      } else if (res == STATUS::ERROR_FPUTC){
+        throw "Implementation Handling Failed! (ERROR_FPUTC)";
+      } else if (res == STATUS::ERROR_FWRITE){
+        throw "Implementation Handling Failed! (ERROR_FWRITE)";
+      } else if (res == STATUS::ERROR_STRCMP){
+        throw "Implementation Handling Failed! (ERROR_STRCMP)";
+      } else if (res == STATUS::ERROR_WRITE){
+        throw "Implementation Handling Failed! (ERROR_WRITE)";
+      } else if (res == STATUS::ERROR_FEOF){
+        throw "Implementation Handling Failed! (ERROR_FEOF)";
+      } else if (res == STATUS::ERROR_FSCANF){
+        throw "Implementation Handling Failed! (ERROR_FSCANF)";
+      } else if (res == STATUS::ERROR_SSCANF){
+        throw "Implementation Handling Failed! (ERROR_SSCANF)";
       }
       break;
     }
@@ -333,8 +376,19 @@ inline constexpr auto ParseAndRunNoCheck() {
   return state.m_frameBuffer.m_data;
 }
 
-inline constexpr auto RunNoCheck() {
+#ifdef RUNTIME_MODE
+inline auto RunNoCheck() {
+#else
+constexpr auto RunNoCheck() {
+#endif
+
+#ifdef RUNTIME_MODE
+  auto statePtr = std::make_unique<State>();
+  State &state = *statePtr;
+#else
   State state{};
+#endif
+
   int res = make_state(state);
 
   if (res != 0) {
@@ -358,7 +412,7 @@ inline constexpr auto RunNoCheck() {
   STATUS execRes = loop(state);
 
   if (execRes == STATUS::ISBAD) {
-    return state.m_frameBuffer.m_data;
+    return state.m_frameBuffer;
   }
 
   if (execRes != STATUS::OK) {
@@ -374,5 +428,5 @@ inline constexpr auto RunNoCheck() {
   if (returnValue.get<int32_t>() != 0) {
     throw "Invalid return value from main!";
   }
-  return state.m_frameBuffer.m_data;
+  return state.m_frameBuffer;
 }

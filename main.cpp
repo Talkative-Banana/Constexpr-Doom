@@ -9,19 +9,34 @@
 
 #ifdef RUNTIME_MODE
 int main() {
-  // auto finalBuffer = ParseAndRunNoCheck();
-  size_t hash = constexpr_hash("$getenv");
-  int64_t h = static_cast<int64_t>(hash % MAXFUNCTIONS);
-  std::cout << h << std::endl;
+  auto finalBuffer = RunNoCheck();
+  
+  // Print pixel region (320x200 ASCII art)
+  for (int y = 0; y < SCREENHEIGHT; y++){
+    for (int x = 0; x < SCREENWIDTH; x++){
+      std::cout << finalBuffer.m_data[y * SCREENWIDTH + x];
+    }
+    std::cout << '\n';
+  }
+
+
+  if (finalBuffer.m_framePtr > FrameBuffer::SCREEN_BYTES) {
+    std::cout << "\n--- LOG ---\n";
+    for (uint32_t i = FrameBuffer::SCREEN_BYTES; i < finalBuffer.m_framePtr; i++) {
+      std::cout << finalBuffer.m_data[i];
+    }
+    std::cout << '\n';
+  }
+
+  return 0;
 }
 #else
 
 constexpr auto finalBuffer = RunNoCheck();
-constexpr std::string_view SV(finalBuffer.data(), finalBuffer.size());
+constexpr std::string_view SV(finalBuffer.m_data.data(), finalBuffer.m_data.size());
 auto x = inspect<SV>();
 
 #endif
-
 /*
 V => Video
 M => Menu

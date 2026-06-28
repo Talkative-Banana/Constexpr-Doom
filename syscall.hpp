@@ -3,55 +3,33 @@
 #include "types.hpp"
 #include <array>
 #include <string_view>
+#include <cstdio>
+
+constexpr void writeFrameByte(FrameBuffer &fb, char c) {
+  if (fb.m_framePtr < FrameBuffer::TOTAL_SIZE) {
+    fb.m_data[fb.m_framePtr++] = c;
+  }
+}
 
 // helper — constexpr itoa into memory, returns chars written
-constexpr int write_int(Memory &mem, int offset, int32_t val) {
-  if (val == 0) {
-    mem.m_data[offset] = '0';
-    return 1;
-  }
-
-  std::array<char, 12> tmp;
-  int len = 0;
-  bool neg = val < 0;
-  // careful: INT32_MIN can't be negated, but fine for now
-  if (neg)
-    val = -val;
-  while (val > 0) {
-    tmp[len++] = '0' + (val % 10);
-    val /= 10;
-  }
-  if (neg)
-    tmp[len++] = '-';
-
-  for (int j = 0; j < len; j++)
-    mem.m_data[offset + j] = tmp[len - 1 - j];
-
-  return len;
-}
-// helper — constexpr itoa into frame buffer, returns chars written
 constexpr int write_int(FrameBuffer &frameBuffer, int32_t val) {
   if (val == 0) {
-    frameBuffer.m_data[frameBuffer.m_framePtr] = '0';
-    frameBuffer.m_framePtr++;
+    writeFrameByte(frameBuffer, '0');
     return 1;
   }
 
   std::array<char, 12> tmp;
   int len = 0;
   bool neg = val < 0;
-  // careful: INT32_MIN can't be negated, but fine for now
-  if (neg)
-    val = -val;
+  if (neg) val = -val;
   while (val > 0) {
     tmp[len++] = '0' + (val % 10);
     val /= 10;
   }
-  if (neg)
-    tmp[len++] = '-';
+  if (neg) tmp[len++] = '-';
 
   for (int j = 0; j < len; j++) {
-    frameBuffer.m_data[frameBuffer.m_framePtr++] = tmp[len - 1 - j];
+    writeFrameByte(frameBuffer, tmp[len - 1 - j]);
   }
 
   return len;
@@ -394,7 +372,7 @@ constexpr STATUS PRINTF(State &state) {
     char c = memory.m_data[i];
 
     if (c != '%') {
-      frameBuffer.m_data[frameBuffer.m_framePtr++] = c;
+      writeFrameByte(frameBuffer, c);
       continue;
     }
 
@@ -405,7 +383,7 @@ constexpr STATUS PRINTF(State &state) {
 
     switch (spec) {
     case '%':
-      frameBuffer.m_data[frameBuffer.m_framePtr++] = '%';
+      writeFrameByte(frameBuffer, '%');
       break;
 
     case 'd':
@@ -428,7 +406,7 @@ constexpr STATUS PRINTF(State &state) {
         char ch = memory.m_data[str_ptr + j];
         if (ch == '\0')
           break;
-        frameBuffer.m_data[frameBuffer.m_framePtr++] = ch;
+        writeFrameByte(frameBuffer, ch);
       }
       break;
     }
@@ -437,13 +415,13 @@ constexpr STATUS PRINTF(State &state) {
       int32_t val = 0;
       if (!read_vararg(val))
         throw "Error reading vararg for printf";
-      frameBuffer.m_data[frameBuffer.m_framePtr++] = static_cast<char>(val);
+      writeFrameByte(frameBuffer, static_cast<char>(val));
       break;
     }
 
     default:
-      frameBuffer.m_data[frameBuffer.m_framePtr++] = '%';
-      frameBuffer.m_data[frameBuffer.m_framePtr++] = spec;
+      writeFrameByte(frameBuffer, '%');
+      writeFrameByte(frameBuffer, spec);
       break;
     }
   }
@@ -508,9 +486,14 @@ constexpr STATUS MALLOC(State &state) {
 
   // TODO: Fix this to get ptr dynamically [bump alloc for now]
   // 2. get a place to save result to
-  int32_t ptr = state.m_heap.m_heapPtr;
+  int32_t ptr = 0;
+
+  if (state.m_heap.m_heapPtr + size >= MEMORYSIZE)
+    throw "heap overflow";
 
   // 3. Increase the ptr
+  state.m_heap.m_heapPtr = (state.m_heap.m_heapPtr + 3) & ~3;
+  ptr = state.m_heap.m_heapPtr;
   state.m_heap.m_heapPtr += size;
 
   // 4. Push return value (pointer)
@@ -657,15 +640,12 @@ constexpr STATUS ACCESS(State &state) {
 }
 // puts
 constexpr STATUS PUTS(State &state) {
-  // puts() writes the string s and a trailing newline to stdout.
   Memory &memory = state.m_memory;
   Stack &op_stk = state.m_opStack;
   FrameBuffer &frameBuffer = state.m_frameBuffer;
 
-  // 1. Pop argument (pointer to key string)
   int32_t key_ptr = op_stk.Pop().get<int32_t>();
 
-  // 2. Read string from WASM memory
   int idx = 0;
   while (idx + key_ptr < MEMORYSIZE && memory.m_data[key_ptr + idx] != '\0') {
     idx++;
@@ -674,11 +654,23 @@ constexpr STATUS PUTS(State &state) {
   std::array<char, LBUFF> buff = {0};
   for (int i = 0; i < idx; i++) {
     buff[i] = memory.m_data[key_ptr + i];
-    frameBuffer.m_data[frameBuffer.m_framePtr++] = memory.m_data[key_ptr + i];
   }
 
-  // add newline as per standard
-  frameBuffer.m_data[frameBuffer.m_framePtr++] = '\n';
+  // Write into the reserved log region, not the pixel region.
+  // If framePtr hasn't been initialized into the log region yet, start there.
+  if (frameBuffer.m_framePtr < FrameBuffer::SCREEN_BYTES) {
+    frameBuffer.m_framePtr = FrameBuffer::SCREEN_BYTES;
+  }
+
+  for (int i = 0; i < idx; i++) {
+    if (frameBuffer.m_framePtr < FrameBuffer::TOTAL_SIZE) {
+      writeFrameByte(frameBuffer, buff[i]);
+    }
+  }
+  if (frameBuffer.m_framePtr < FrameBuffer::TOTAL_SIZE) {
+    writeFrameByte(frameBuffer, '\n');
+  }
+
   std::string_view key(buff.data(), idx);
 
   Data ret{};
@@ -731,14 +723,18 @@ constexpr STATUS CALLOC(State &state) {
 
   // TODO: Fix this to get ptr dynamically
   // 2. get a place to save result to
-  int32_t ptr = state.m_heap.m_heapPtr;
+  int32_t ptr = 0;
 
-  // Set to zero
+  if (state.m_heap.m_heapPtr + size >= MEMORYSIZE)
+    throw "heap overflow";
+
+  state.m_heap.m_heapPtr = (state.m_heap.m_heapPtr + 3) & ~3;
+  ptr = state.m_heap.m_heapPtr;
+
   for (int i = 0; i < size * nmemb; i++) {
-    state.m_memory.m_data[i + ptr] = 0;
+      state.m_memory.m_data[ptr + i] = 0;
   }
 
-  // 3. Increase the ptr
   state.m_heap.m_heapPtr += size * nmemb;
 
   // 4. Push return value (pointer)
@@ -799,8 +795,8 @@ constexpr STATUS PUTCHAR(State &state) {
 
   int32_t chr = op_stk.Pop().get<int32_t>();
 
-  frameBuffer.m_data[frameBuffer.m_framePtr++] = chr;
-  
+  writeFrameByte(frameBuffer, chr);
+
   Data ret{};
   ret.set(chr);
   op_stk.Push(ret);
@@ -843,9 +839,20 @@ constexpr STATUS FPUTC(State &state) {
 }
 // fwrite
 constexpr STATUS FWRITE(State &state) {
-  //   throw "syscall fwrite not implemented\n";
+  Stack &op_stk = state.m_opStack;
+
+  // fwrite(ptr, size, nmemb, stream) -> i32 (items written)
+  Data stream = op_stk.Pop();
+  Data nmemb  = op_stk.Pop();
+  Data size   = op_stk.Pop();
+  Data ptr    = op_stk.Pop();
+  (void)stream; (void)size; (void)ptr;
+
+  // Pretend success: report that we wrote all requested items.
+  op_stk.Push(nmemb);
+
   state.m_instrPointer++;
-  return STATUS::ERROR_FWRITE;
+  return STATUS::OK;
 }
 // memset
 constexpr STATUS MEMSET(State &state) {
@@ -872,9 +879,32 @@ constexpr STATUS MEMSET(State &state) {
 }
 // strcmp
 constexpr STATUS STRCMP(State &state) {
-  //   throw "syscall strcmp not implemented\n";
-  state.m_instrPointer++;
-  return STATUS::ERROR_STRCMP;
+  Memory &memory = state.m_memory;
+  Stack &op_stk = state.m_opStack;
+
+  int32_t s2_ptr = op_stk.Pop().get<int32_t>();
+  int32_t s1_ptr = op_stk.Pop().get<int32_t>();
+
+  int i = 0;
+  while (true) {
+    char c1 = memory.m_data[s1_ptr + i];
+    char c2 = memory.m_data[s2_ptr + i];
+    if (c1 != c2) {
+      Data ret{};
+      ret.set(static_cast<int32_t>(c1 - c2));
+      op_stk.Push(ret);
+      state.m_instrPointer++;
+      return STATUS::OK;
+    }
+    if (c1 == '\0') {
+      Data ret{};
+      ret.set(int32_t{0});
+      op_stk.Push(ret);
+      state.m_instrPointer++;
+      return STATUS::OK;
+    }
+    i++;
+  }
 }
 // open
 constexpr STATUS OPEN(State &state) {
@@ -1262,6 +1292,14 @@ constexpr STATUS REALLOC(State &state) {
   int32_t size = op_stk.Pop().get<int32_t>();
   int32_t rPtr = op_stk.Pop().get<int32_t>();
 
+  if (rPtr >= MEMORYSIZE) {
+  #ifdef RUNTIME_MODE
+      fprintf(stderr, "REALLOC BAD PTR %d size=%d\n", rPtr, size);
+  #endif
+    throw "bad realloc ptr";
+  }
+
+
   int32_t newPtr = 0;
 
   if (rPtr == 0) {
@@ -1273,7 +1311,8 @@ constexpr STATUS REALLOC(State &state) {
       state.m_instrPointer++;
       return STATUS::OK;
     }
-    newPtr = state.m_heap.m_heapPtr;
+    newPtr = (state.m_heap.m_heapPtr + 3) & ~3;
+    state.m_heap.m_heapPtr = newPtr;
     state.m_heap.m_heapPtr += size;
 
     Data ret{};
@@ -1287,7 +1326,8 @@ constexpr STATUS REALLOC(State &state) {
     op_stk.Push(ret);
   } else {
     // Allocate new block and copy old contents
-    newPtr = state.m_heap.m_heapPtr;
+    newPtr = (state.m_heap.m_heapPtr + 3) & ~3;
+    state.m_heap.m_heapPtr = newPtr;
     state.m_heap.m_heapPtr += size;
 
     // Copy from old ptr (we don't know old size, copy 'size' bytes as best

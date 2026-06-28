@@ -490,14 +490,28 @@ def parse_data(src: str, memory: Memory):
     addr = int(m.group(1))
     qs, qe = src.find('"'), src.rfind('"')
     if qs == qe: return
-    raw, out, i = src[qs+1:qe], bytearray(), 0
+    raw = src[qs+1:qe]
+    out = bytearray()
+    i = 0
     while i < len(raw):
         if raw[i] == '\\':
-            out.append((int(raw[i+1],16)<<4)|int(raw[i+2],16)); i+=3
+            # Check for regular double-digit hex variants (e.g. \0a)
+            if i + 2 < len(raw) and all(c in '0123456789abcdefABCDEF' for c in raw[i+1:i+3]):
+                out.append(int(raw[i+1:i+3], 16))
+                i += 3
+            else:
+                # Handle standard common string abbreviations 
+                escape_map = {'n': 10, 'r': 13, 't': 9, '0': 0, '\\': 92, '"': 34}
+                next_char = raw[i+1] if i + 1 < len(raw) else '\\'
+                out.append(escape_map.get(next_char, ord(next_char)))
+                i += 2
         else:
-            out.append(ord(raw[i])); i+=1
+            out.append(ord(raw[i]))
+            i += 1
+            
     for off, byte in enumerate(out):
-        if addr+off < len(memory.data): memory.data[addr+off] = byte
+        if addr+off < len(memory.data): 
+            memory.data[addr+off] = byte
 
 def parse_elem(src: str) -> list[tuple[int,str]]:
     m = re.search(r'i32\.const\s+(\d+)', src)
@@ -542,7 +556,7 @@ def build_state(src: str) -> ParsedState:
             state.vtable_entries += parse_elem(child)
     
     # ── Reconstruct dead-stripped tantoangle table ──────────────
-    inject_tantoangle(state.memory, base_addr=185344)
+    # inject_tantoangle(state.memory, base_addr=185344)
     
     last = 0
     for i in range(2049):
