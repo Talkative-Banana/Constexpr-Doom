@@ -12,13 +12,11 @@ int main() {
   auto finalBuffer = RunNoCheck();
   
   // Print pixel region (320x200 ASCII art)
-  for (int i = 0; i < 5; i++){
-    for (int y = 0; y < SCREENHEIGHT; y++){
-      for (int x = 0; x < SCREENWIDTH; x++){
-        std::cout << finalBuffer.m_data[i * SCREENHEIGHT * SCREENWIDTH + y * SCREENWIDTH + x];
-      }
-      std::cout << '\n';
+  for (int y = 0; y < SCREENHEIGHT; y++){
+    for (int x = 0; x < SCREENWIDTH; x++){
+      std::cout << finalBuffer.m_data[y * SCREENWIDTH + x];
     }
+    std::cout << '\n';
   }
 
 
