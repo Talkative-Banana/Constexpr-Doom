@@ -2,7 +2,6 @@
 .vscode/
 *.wasm
 ctwr
-doom1.wad
 parsedState.hpp
 
 # Build artifacts
